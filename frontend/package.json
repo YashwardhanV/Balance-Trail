@@ -1,0 +1,28 @@
+{
+  "name": "balancetrail-frontend",
+  "author": "Yashwardhan Verma <yashwardhanverma108@gmail.com> (https://github.com/YashwardhanV)",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-react": "6.0.5",
+    "tailwindcss": "4.3.3",
+    "vite": "8.2.1",
+    "typescript": "7.0.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "vitest": "4.1.0"
+  }
+}

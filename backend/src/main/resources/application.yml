@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: balancetrail
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/balancetrail}
+    username: ${DB_USERNAME:balancetrail}
+    password: ${DB_PASSWORD:balancetrail}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:8}
+      minimum-idle: ${DB_POOL_MIN:2}
+      connection-timeout: 20000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: ${HIBERNATE_BATCH_SIZE:100}
+        order_inserts: true
+  flyway:
+    enabled: true
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: always
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_SIZE:25MB}
+      max-request-size: ${MAX_UPLOAD_SIZE:25MB}
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  storage:
+    upload-directory: ${UPLOAD_DIRECTORY:./data/uploads}
+  bootstrap-user:
+    username: ${APP_USERNAME:analyst}
+    password: ${APP_PASSWORD:change-me-now}
+  batch:
+    chunk-size: ${BATCH_CHUNK_SIZE:100}
+    retry-limit: ${BATCH_RETRY_LIMIT:3}
+    skip-limit: ${BATCH_SKIP_LIMIT:1000000}
+    initial-retry-delay-ms: ${BATCH_RETRY_INITIAL_MS:100}
+    max-retry-delay-ms: ${BATCH_RETRY_MAX_MS:1000}
+    worker-threads: ${BATCH_WORKER_THREADS:2}
+    queue-capacity: ${BATCH_QUEUE_CAPACITY:20}
