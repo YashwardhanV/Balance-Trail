@@ -1,0 +1,21 @@
+# Java
+backend/target/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# Local runtime data
+.env
+data/
+benchmark-data/*
+!benchmark-data/.gitkeep
+!benchmark-data/results-*.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

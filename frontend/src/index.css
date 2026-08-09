@@ -1,0 +1,84 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: Inter, "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+:root {
+  color: #0f172a;
+  background: #f4f7f8;
+  font-synthesis: none;
+}
+
+html {
+  color-scheme: light;
+  background: #f4f7f8;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+label:has(input:focus-visible) {
+  outline: 2px solid #0f766e;
+  outline-offset: 3px;
+}
+
+.login-canvas {
+  background-color: #eef3f4;
+  background-image:
+    radial-gradient(circle at 12% 10%, rgba(13, 148, 136, 0.09), transparent 31%),
+    radial-gradient(circle at 88% 88%, rgba(245, 158, 11, 0.08), transparent 28%),
+    linear-gradient(rgba(15, 23, 42, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
+  background-size: auto, auto, 32px 32px, 32px 32px;
+}
+
+.brand-hero::before,
+.brand-hero::after {
+  position: absolute;
+  content: '';
+  border: 1px solid rgba(45, 212, 191, 0.15);
+  border-radius: 9999px;
+}
+
+.brand-hero::before {
+  width: 560px;
+  height: 560px;
+  right: -290px;
+  top: 42px;
+  box-shadow:
+    0 0 0 56px rgba(45, 212, 191, 0.025),
+    0 0 0 112px rgba(45, 212, 191, 0.02);
+}
+
+.brand-hero::after {
+  width: 340px;
+  height: 340px;
+  left: -210px;
+  bottom: -170px;
+  border-color: rgba(245, 158, 11, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
