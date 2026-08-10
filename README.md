@@ -245,6 +245,7 @@ Generated CSV files are ignored, while dated raw JSON is retained under `benchma
 - [Complete documentation index](DOCUMENTATION_INDEX.md)
 - [Local run guide](LOCAL_RUN_GUIDE.md)
 - [Project author](AUTHORS.md)
+  
 - [Architecture and engineering decisions](docs/ARCHITECTURE.md)
 - [Brand and UX rationale](docs/BRAND_AND_UX.md)
 - [ER diagram and constraints](docs/ER_DIAGRAM.md)
