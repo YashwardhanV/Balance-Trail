@@ -1,284 +1,103 @@
 # BalanceTrail
 
-BalanceTrail is a transaction-reconciliation portfolio application built as a modular monolith with Java 21, Spring Boot, Spring Batch, PostgreSQL, React, TypeScript, and Tailwind CSS. Its product promise is simple: **every transaction, clearly accounted for.**
+## Project Architecture
 
 Project author: **Yashwardhan Verma**
 
 [GitHub](https://github.com/YashwardhanV) · [LinkedIn](https://www.linkedin.com/in/yashwardhanv) · [Email](mailto:yashwardhanverma108@gmail.com)
 
-It accepts a payment-gateway CSV, validates each row, compares it with the internal ledger, isolates invalid/duplicate rows, and exposes a durable run summary and discrepancy table. The project is intentionally one understandable application—not a collection of resume-keyword infrastructure.
+BalanceTrail is a transaction-reconciliation application built as a modular monolith with Java 21, Spring Boot, Spring Batch, PostgreSQL, React, TypeScript, and Tailwind CSS. It accepts a payment-gateway CSV, validates and compares each row with an internal ledger, and exposes durable run summaries and discrepancy evidence.
 
-
-
-## What problem it solves
-
-Payment providers can send settlement files that disagree with a company's ledger. Operations needs to know:
-
-- which transactions matched;
-- which have different amounts;
-- which are absent from the ledger;
-- which input rows are invalid or duplicated;
-- whether a repeated file was already processed; and
-- whether a run completed, completed with skips, or failed.
-
-## Main features
-
-- Authenticated CSV upload and asynchronous reconciliation lifecycle
-- Spring Batch `ItemReader` / `ItemProcessor` / `ItemWriter` chunk pipeline
-- `MATCHED`, `AMOUNT_MISMATCH`, `MISSING_IN_LEDGER`, `INVALID`, and `DUPLICATE` outcomes
-- Bounded retry with exponential delay for transient data-access failures
-- Row-level skip handling with durable error evidence
-- SHA-256 file idempotency plus database uniqueness constraints
-- Restart-aware duplicate detection and Spring Batch metadata in PostgreSQL
-- Paginated run history and discrepancy APIs using DTOs
-- Flyway migrations, check constraints, foreign keys, and query-driven indexes
-- Database-backed BCrypt user authentication and owner-scoped authorization
-- Responsive React operations workspace with CSV import, polling state, outcome summaries, run history, and discrepancy review
-- PostgreSQL Testcontainers integration tests, Docker Compose, health checks, OpenAPI, and CI
-- Deterministic 1,000 / 10,000 / 100,000 record benchmark utilities
-
-## Architecture
-
-```text
-Browser
-  -> React dashboard served by Nginx
-  -> authenticated REST calls
-  -> one Spring Boot backend
-       -> upload/hash/run services
-       -> Spring Batch chunk job
-       -> Spring Data JPA
-  -> one PostgreSQL database
+```mermaid
+flowchart LR
+    UI["React operations workspace"] -->|"Authenticated REST and polling"| API["Spring Boot API"]
+    API --> Storage["Upload volume"]
+    API --> DB[("PostgreSQL")]
+    API --> Executor["Bounded job executor"]
+    Executor --> Batch["Spring Batch reader, processor, writer"]
+    Batch --> DB
 ```
 
-The uploaded file is stored in a Docker volume. A `PENDING` run and its after-commit launch event are created in one transaction. A bounded local executor launches the Spring Batch job; the client receives `202 Accepted` and polls the run resource.
+- **Frontend:** React and TypeScript provide sign-in, CSV upload, active-run polling, outcome summaries, run history, and paginated discrepancy review.
+- **API and orchestration:** Spring MVC controllers expose multipart upload and owner-scoped query endpoints. A valid upload is hashed and stored, then a `PENDING` run and an after-commit launch event are created in one transaction. The API returns `202 Accepted` while a bounded executor starts the batch job.
+- **Batch pipeline:** Spring Batch reads one CSV record at a time, maps and validates fields, checks restart-aware duplicates, compares valid transactions with the ledger, and writes chunk results. Outcomes are `MATCHED`, `AMOUNT_MISMATCH`, `MISSING_IN_LEDGER`, `INVALID`, or `DUPLICATE`.
+- **Reliability:** Invalid and duplicate rows are skipped with durable evidence. Transient data-access failures receive bounded exponential retries; permanent failures mark the run `FAILED` while committed chunk results remain queryable.
+- **Idempotency:** SHA-256 identifies identical file bytes within an owner scope. A database uniqueness constraint prevents two reconciliation runs for the same owner and hash, including concurrent uploads.
+- **Persistence and security:** PostgreSQL stores users, ledger transactions, reconciliation runs, row outcomes, and Spring Batch metadata. Flyway manages constraints and query-driven indexes. BCrypt-backed HTTP Basic authentication and owner-scoped queries prevent one user from reading another user's runs.
+- **Execution model:** The batch step is intentionally single-threaded to preserve deterministic first-occurrence duplicate semantics and straightforward restart behavior. The executor can run bounded jobs asynchronously without creating unbounded threads.
 
-Detailed diagrams and transaction/failure reasoning are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## How to Run
 
-## Database model
+1. Install Docker Desktop or Docker Engine with Docker Compose.
+2. From the repository root, optionally copy `.env.example` to `.env` and change the local credentials or batch settings.
+3. Build and start PostgreSQL, the backend, and the frontend:
 
-- `app_user`: login, BCrypt hash, role
-- `ledger_transaction`: internal source-of-truth transaction
-- `reconciliation_run`: file identity, owner, lifecycle, persisted counters
-- `reconciliation_item`: one outcome per physical CSV line
-- Spring Batch `BATCH_*`: job, step, execution context, and restart metadata
+   ```bash
+   docker compose up --build
+   ```
 
-The business ER diagram and constraint/index rationale are in [docs/ER_DIAGRAM.md](docs/ER_DIAGRAM.md).
+4. Open the application:
 
-## Important engineering decisions
+   - Dashboard: <http://localhost:3000>
+   - Backend API: <http://localhost:8080>
+   - OpenAPI UI: <http://localhost:8080/swagger-ui.html>
+   - Health: <http://localhost:8080/actuator/health>
 
-| Decision | Reason |
-|---|---|
-| Modular monolith | One cohesive domain does not need network/deployment boundaries |
-| Keep Spring Batch | Chunk transactions, checkpoints, skip/retry, and execution metadata are core to the problem |
-| PostgreSQL-only persistence | Relations, constraints, aggregation, and transactional batch metadata fit naturally |
-| File hash scoped by owner | Identical bytes are a better idempotency key than a mutable file name |
-| Single-threaded step | Deterministic first-occurrence duplicate semantics and simpler restart behavior |
-| Bounded async run executor | Responsive API without unbounded thread creation |
-| Polling rather than WebSocket | Adequate status UX with much lower lifecycle complexity |
-| Flyway + Hibernate validation | Reviewable migrations with mapping drift detected at startup |
-| Testcontainers, not H2 | Tests the actual PostgreSQL types, partial index, constraints, and transactions |
-| HTTP Basic for local demo | Small, inspectable Spring Security boundary; HTTPS/OIDC is required for a hosted version |
-| Bespoke UI without a component library | The workflow needs a small accessible design system, not another runtime dependency |
+5. Sign in with the local credentials:
 
-## Run in one command
+   ```text
+   username: analyst
+   password: change-me-now
+   ```
 
-Requirements: Docker Desktop/Engine with Compose.
+6. Upload `backend/src/main/resources/demo/gateway-transactions.csv` to exercise matched, mismatched, missing, duplicate, and invalid outcomes.
+7. Stop the stack without deleting the database or upload volumes:
 
-```bash
-docker compose up --build
-```
+   ```bash
+   docker compose down
+   ```
 
-Then open:
+For local development, start PostgreSQL with `docker compose up -d db`. Run `./mvnw spring-boot:run` from `backend` (`mvnw.cmd spring-boot:run` on Windows), then run `npm ci` and `npm run dev` from `frontend` in a second terminal. Use Java 21 and Node.js 24 for the same versions as the containerized workflow.
 
-- Dashboard: <http://localhost:3000>
-- Backend API: <http://localhost:8080>
-- OpenAPI UI: <http://localhost:8080/swagger-ui.html>
-- Health: <http://localhost:8080/actuator/health>
-
-Default local login:
-
-```text
-username: analyst
-password: change-me-now
-```
-
-Copy `.env.example` to `.env` and change the password before sharing a running environment. Bootstrap credentials are used only when that username does not already exist in the persistent database volume.
-
-To see useful behavior immediately, upload:
-
-```text
-backend/src/main/resources/demo/gateway-transactions.csv
-```
-
-It includes matches, an amount mismatch, a missing transaction, a duplicate, an invalid amount, and an invalid date.
-
-Stop containers without deleting data:
-
-```bash
-docker compose down
-```
-
-`docker compose down -v` intentionally deletes database and upload volumes; use it only when you want a clean reset.
-
-## Development commands
-
-Start only PostgreSQL:
-
-```bash
-docker compose up -d db
-```
-
-Run the backend (Java 21):
-
-```bash
-cd backend
-./mvnw spring-boot:run
-```
-
-On Windows Command Prompt/PowerShell use `mvnw.cmd spring-boot:run`.
-
-Run the frontend (Node 24):
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-Vite proxies API routes to `localhost:8080`.
-
-## Java version decision
-
-The project deliberately targets Java 21. Java 25 is the newest LTS release, but upgrading solely to display a larger version number does not add meaningful SDE-1 signal and would make the recorded Java 21 benchmarks non-comparable. Java 21 remains an LTS release and is the version used by the backend build/runtime containers and CI.
-
-Your host JDK does not affect the recommended Docker workflow. A machine with JDK 26 can run `docker compose up --build` because Maven and the application execute inside Java 21 containers. For local, non-Docker Maven development, use JDK 21 for the same environment as CI. See [docs/JAVA_VERSION.md](docs/JAVA_VERSION.md) for the compatibility decision and upgrade checklist.
-
-## CSV contract
-
-The exact header is:
-
-```csv
-transaction_id,account_number,amount,transaction_date
-```
-
-- `transaction_id`: required, at most 64 characters
-- `account_number`: required, at most 32 characters
-- `amount`: positive decimal with at most two fractional digits
-- `transaction_date`: ISO date (`yyyy-MM-dd`)
-
-Quoted single-line fields and doubled quote escaping are supported. Multiline quoted fields are not supported and are listed under known limitations.
-
-## API examples
-
-Create a run:
-
-```bash
-curl -i -u analyst:change-me-now \
-  -F "file=@backend/src/main/resources/demo/gateway-transactions.csv" \
-  http://localhost:8080/reconciliations
-```
-
-List history:
-
-```bash
-curl -u analyst:change-me-now \
-  "http://localhost:8080/reconciliations?page=0&size=20"
-```
-
-Inspect one run and its discrepancies:
-
-```bash
-curl -u analyst:change-me-now http://localhost:8080/reconciliations/{id}
-curl -u analyst:change-me-now http://localhost:8080/reconciliations/{id}/summary
-curl -u analyst:change-me-now \
-  "http://localhost:8080/reconciliations/{id}/discrepancies?page=0&size=20"
-```
-
-See [docs/API.md](docs/API.md) for contracts, error shape, and status codes.
-
-## Tests
-
-Backend tests require a running Docker daemon because integration tests start a real PostgreSQL container:
+Run the verification suites with:
 
 ```bash
 cd backend
 ./mvnw verify
-```
 
-The suite covers:
-
-- matching and money comparison;
-- retry delay calculation;
-- quoted/malformed CSV mapping;
-- processor validation and restart-aware duplicates;
-- unauthenticated/authenticated API behavior;
-- multipart creation, run polling, summaries, and discrepancies;
-- valid, malformed, duplicate, mismatched, missing, and invalid rows;
-- repeated identical input;
-- chunk skip isolation; and
-- PostgreSQL uniqueness/check constraints.
-
-Frontend type-check and production build:
-
-```bash
-cd frontend
+cd ../frontend
 npm ci
 npm run build
 ```
 
-GitHub Actions runs both jobs on pushes and pull requests.
+Backend integration tests require Docker because Testcontainers starts a real PostgreSQL instance.
 
-## Benchmarks
+## Interview Prep
 
-Start the Compose application, then run from PowerShell. The script runs the deterministic generator in a small Python container, so Docker remains the only runtime prerequisite:
+**Q: Why use Spring Batch for reconciliation instead of processing the entire file in a controller?**
 
-```powershell
-./scripts/run-benchmarks.ps1 -Sizes 1000,10000,100000 -Runs 3
-```
+**A:** Chunk processing provides explicit reader, processor, and writer stages; bounded transactions; restart metadata; retry and skip policies; and durable progress. The upload request can return promptly while the job processes asynchronously, and a failure does not require reprocessing every previously committed chunk.
 
-The generator creates a deterministic distribution per 100 records: 80 matches, 10 amount mismatches, 7 missing ledger rows, 2 invalid rows, and 1 duplicate. Every measured processing run receives a unique prefix; an immediate second upload checks idempotent replay behavior.
+**Q: How does BalanceTrail prevent duplicate processing of the same file?**
 
-Generated CSV files are ignored, while dated raw JSON is retained under `benchmark-data/` as evidence. Only actual results are summarized in [docs/BENCHMARK_RESULTS.md](docs/BENCHMARK_RESULTS.md). Do not copy a metric into a resume without re-running it on your environment and keeping the result file.
+**A:** The service computes a SHA-256 hash of the uploaded bytes and scopes it to the authenticated owner. A unique database constraint on owner and hash is authoritative under concurrent uploads. A duplicate returns the original run instead of launching a second job.
 
-## Documentation
+**Q: How are bad rows handled without hiding data-quality problems?**
 
-- [Complete documentation index](DOCUMENTATION_INDEX.md)
-- [Local run guide](LOCAL_RUN_GUIDE.md)
-- [Project author](AUTHORS.md)
-  
-- [Architecture and engineering decisions](docs/ARCHITECTURE.md)
-- [Brand and UX rationale](docs/BRAND_AND_UX.md)
-- [ER diagram and constraints](docs/ER_DIAGRAM.md)
-- [API guide](docs/API.md)
-- [Java version decision](docs/JAVA_VERSION.md)
-- [Benchmark results](docs/BENCHMARK_RESULTS.md)
-- [Interview guide](docs/INTERVIEW_GUIDE.md)
-- [Evidence-bounded resume bullets](docs/RESUME_BULLETS.md)
-- [Final SDE-1 audit](SDE1_AUDIT.md)
+**A:** Mapping and validation classify malformed records as `INVALID`, while repeated valid transaction IDs become `DUPLICATE`. Spring Batch skips those rows within a configured safety limit, but a listener persists line-level evidence and the run summary records the skipped counts. This allows useful rows to complete without silently discarding failures.
 
-## Known limitations
+**Q: Why is the batch step single-threaded?**
 
-- HTTP Basic is intended for localhost and requires HTTPS outside it; there is no password-management UI.
-- Uploaded files remain on local volume for restart/audit and have no retention job.
-- Dispatch after database commit uses an in-memory executor. A process crash in that narrow window can leave a stale `PENDING` run.
-- The item step is intentionally single-threaded and performs one indexed ledger lookup per valid unique row.
-- The duplicate detector holds accepted transaction IDs in memory for each active run.
-- Only comma-delimited UTF-8, one-record-per-line CSV is supported.
-- No cancellation/restart administration API is exposed.
-- The frontend keeps credentials in memory, so a browser refresh requires signing in again.
-- This is a portfolio application, not a claim of regulatory compliance or production readiness.
+**A:** Duplicate classification depends on the first accepted occurrence in file order. A single-threaded step keeps that result deterministic and makes checkpoints and restarts easier to reason about. Parallelism should be introduced only after profiling, with partitioning and duplicate ownership rules designed explicitly.
 
-## Future improvements, in order
+**Q: How is asynchronous job launch coordinated with the upload transaction?**
 
-1. Add a small stale-`PENDING` recovery job and explicit operator restart endpoint.
-2. Add upload retention/cleanup with an auditable policy.
-3. Add owner-isolation and forced transient-failure integration tests.
-4. Profile the per-row ledger lookup and evaluate chunk-level bulk fetch only if benchmarks justify it.
-5. Add hosted HTTPS and OIDC if the application is deployed publicly.
-6. Consider partitioning only after a measured requirement exceeds the single-process design.
+**A:** The stored file, run record, and after-commit launch event are created as one transaction. The listener submits work only after commit, so a worker cannot observe a run that later rolls back. If the process crashes after commit but before submission, a stale-`PENDING` recovery mechanism is the next production hardening step.
 
-Kafka, Redis, microservices, Kubernetes, and a distributed observability stack are not roadmap defaults.
+**Q: What is the difference between retry, skip, and job failure here?**
 
-## License and attribution
+**A:** Retry handles bounded transient data-access errors. Skip handles row-level validation or duplicate conditions while retaining evidence. A permanent reader, writer, or job error marks the run `FAILED`; previously committed chunks remain visible for diagnosis.
 
-BalanceTrail's independently written code is copyright 2026 Yashwardhan Verma and is provided under the MIT License. 
+**Q: Why test with PostgreSQL Testcontainers instead of an in-memory database?**
+
+**A:** The design depends on PostgreSQL constraints, indexes, transaction behavior, and Spring Batch metadata. Testcontainers runs the same database family used by the application, so integration tests validate migration and persistence behavior that an in-memory substitute may implement differently.
