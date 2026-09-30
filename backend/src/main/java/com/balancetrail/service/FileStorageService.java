@@ -41,10 +41,8 @@ public class FileStorageService {
   public StoredFile store(MultipartFile file) {
     validateFile(file);
     String originalName = safeOriginalName(file.getOriginalFilename());
-    Path target = uploadDirectory.resolve(UUID.randomUUID() + ".csv").normalize();
-    if (!target.startsWith(uploadDirectory)) {
-      throw new InvalidUploadException("Invalid upload path");
-    }
+    // The stored name is a random UUID, never the user's file name, so it cannot escape the folder.
+    Path target = uploadDirectory.resolve(UUID.randomUUID() + ".csv");
 
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");

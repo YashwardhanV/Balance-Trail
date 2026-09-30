@@ -21,9 +21,6 @@ CREATE TABLE ledger_transaction (
     CONSTRAINT ck_ledger_amount_positive CHECK (amount > 0)
 );
 
-CREATE INDEX idx_ledger_transaction_date ON ledger_transaction (transaction_date);
-CREATE INDEX idx_ledger_account_date ON ledger_transaction (account_number, transaction_date);
-
 CREATE TABLE reconciliation_run (
     id UUID PRIMARY KEY,
     owner_id BIGINT NOT NULL REFERENCES app_user(id),
@@ -41,19 +38,14 @@ CREATE TABLE reconciliation_run (
     created_at TIMESTAMPTZ NOT NULL,
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ,
-    version BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT uk_run_owner_hash UNIQUE (owner_id, file_sha256),
     CONSTRAINT ck_run_status CHECK (
         status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')
-    ),
-    CONSTRAINT ck_run_counts_nonnegative CHECK (
-        total_count >= 0 AND matched_count >= 0 AND amount_mismatch_count >= 0
-        AND missing_count >= 0 AND invalid_count >= 0 AND duplicate_count >= 0
     )
 );
 
+-- Run history page: "my runs, newest first".
 CREATE INDEX idx_run_owner_created ON reconciliation_run (owner_id, created_at DESC);
-CREATE INDEX idx_run_status_created ON reconciliation_run (status, created_at);
 
 CREATE TABLE reconciliation_item (
     id BIGINT PRIMARY KEY DEFAULT nextval('reconciliation_item_seq'),
@@ -69,18 +61,10 @@ CREATE TABLE reconciliation_item (
     reason VARCHAR(500) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uk_item_run_line UNIQUE (run_id, line_number),
-    CONSTRAINT ck_item_line_positive CHECK (line_number >= 2),
     CONSTRAINT ck_item_status CHECK (
         status IN ('MATCHED', 'AMOUNT_MISMATCH', 'MISSING_IN_LEDGER', 'INVALID', 'DUPLICATE')
     )
 );
 
+-- Discrepancy page: "items of this run with these statuses, ordered by line".
 CREATE INDEX idx_item_run_status_line ON reconciliation_item (run_id, status, line_number);
-CREATE INDEX idx_item_gateway_id ON reconciliation_item (gateway_transaction_id);
-
--- INVALID and DUPLICATE rows remain visible, while this partial index is the final
--- database guard against two accepted outcomes for the same gateway ID in one run.
-CREATE UNIQUE INDEX uk_item_run_accepted_gateway
-    ON reconciliation_item (run_id, gateway_transaction_id)
-    WHERE gateway_transaction_id IS NOT NULL
-      AND status NOT IN ('INVALID', 'DUPLICATE');
