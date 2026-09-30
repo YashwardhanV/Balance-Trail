@@ -18,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-function authorization(credentials: Credentials): string {
+export function authorization(credentials: Credentials): string {
   const bytes = new TextEncoder().encode(`${credentials.username}:${credentials.password}`)
   let binary = ''
   bytes.forEach((value) => {
