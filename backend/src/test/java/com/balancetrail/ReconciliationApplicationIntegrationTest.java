@@ -79,7 +79,7 @@ class ReconciliationApplicationIntegrationTest {
     String runId = first.at("/reconciliation/id").asText();
     JsonNode completed = awaitTerminal(runId);
 
-    assertThat(completed.get("status").asText()).isEqualTo("COMPLETED_WITH_SKIPS");
+    assertThat(completed.get("status").asText()).isEqualTo("COMPLETED");
     assertThat(completed.get("totalCount").asLong()).isEqualTo(5);
     assertThat(completed.get("matchedCount").asLong()).isEqualTo(1);
     assertThat(completed.get("amountMismatchCount").asLong()).isEqualTo(1);
@@ -92,7 +92,8 @@ class ReconciliationApplicationIntegrationTest {
             get("/reconciliations/{id}/summary", runId)
                 .with(httpBasic(USERNAME, PASSWORD)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.skippedCount").value(2));
+        .andExpect(jsonPath("$.invalidCount").value(1))
+        .andExpect(jsonPath("$.duplicateCount").value(1));
     mockMvc
         .perform(
             get("/reconciliations/{id}/discrepancies", runId)
@@ -185,7 +186,7 @@ class ReconciliationApplicationIntegrationTest {
               .getResponse()
               .getContentAsString();
       JsonNode run = objectMapper.readTree(body);
-      if (run.get("status").asText().matches("COMPLETED|COMPLETED_WITH_SKIPS|FAILED")) {
+      if (run.get("status").asText().matches("COMPLETED|FAILED")) {
         return run;
       }
       Thread.sleep(50);

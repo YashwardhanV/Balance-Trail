@@ -12,8 +12,7 @@ public record ReconciliationSummaryResponse(
     long amountMismatchCount,
     long missingInLedgerCount,
     long invalidCount,
-    long duplicateCount,
-    long skippedCount) {
+    long duplicateCount) {
 
   public static ReconciliationSummaryResponse from(ReconciliationRunEntity run) {
     return new ReconciliationSummaryResponse(
@@ -24,7 +23,6 @@ public record ReconciliationSummaryResponse(
         run.getAmountMismatchCount(),
         run.getMissingCount(),
         run.getInvalidCount(),
-        run.getDuplicateCount(),
-        run.getInvalidCount() + run.getDuplicateCount());
+        run.getDuplicateCount());
   }
 }

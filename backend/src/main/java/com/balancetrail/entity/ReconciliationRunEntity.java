@@ -105,7 +105,7 @@ public class ReconciliationRunEntity {
     missingCount = missing;
     invalidCount = invalid;
     duplicateCount = duplicate;
-    status = invalid + duplicate > 0 ? RunStatus.COMPLETED_WITH_SKIPS : RunStatus.COMPLETED;
+    status = RunStatus.COMPLETED;
     finishedAt = Instant.now();
   }
 

@@ -44,7 +44,7 @@ CREATE TABLE reconciliation_run (
     version BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT uk_run_owner_hash UNIQUE (owner_id, file_sha256),
     CONSTRAINT ck_run_status CHECK (
-        status IN ('PENDING', 'RUNNING', 'COMPLETED', 'COMPLETED_WITH_SKIPS', 'FAILED')
+        status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')
     ),
     CONSTRAINT ck_run_counts_nonnegative CHECK (
         total_count >= 0 AND matched_count >= 0 AND amount_mismatch_count >= 0

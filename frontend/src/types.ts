@@ -2,7 +2,6 @@ export type RunStatus =
   | 'PENDING'
   | 'RUNNING'
   | 'COMPLETED'
-  | 'COMPLETED_WITH_SKIPS'
   | 'FAILED'
 
 export type ItemStatus =

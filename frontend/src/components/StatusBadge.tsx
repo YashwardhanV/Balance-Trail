@@ -4,7 +4,6 @@ const styles: Record<RunStatus | ItemStatus, { badge: string; dot: string }> = {
   PENDING: { badge: 'bg-slate-100 text-slate-700 ring-slate-200', dot: 'bg-slate-400' },
   RUNNING: { badge: 'bg-cyan-50 text-cyan-800 ring-cyan-200', dot: 'bg-cyan-500 animate-pulse' },
   COMPLETED: { badge: 'bg-teal-50 text-teal-800 ring-teal-200', dot: 'bg-teal-500' },
-  COMPLETED_WITH_SKIPS: { badge: 'bg-amber-50 text-amber-800 ring-amber-200', dot: 'bg-amber-500' },
   FAILED: { badge: 'bg-rose-50 text-rose-700 ring-rose-200', dot: 'bg-rose-500' },
   MATCHED: { badge: 'bg-teal-50 text-teal-800 ring-teal-200', dot: 'bg-teal-500' },
   AMOUNT_MISMATCH: { badge: 'bg-amber-50 text-amber-800 ring-amber-200', dot: 'bg-amber-500' },
