@@ -14,9 +14,6 @@ public interface ReconciliationRunRepository
 
   Optional<ReconciliationRunEntity> findByOwnerIdAndFileSha256(Long ownerId, String fileSha256);
 
-  Optional<ReconciliationRunEntity> findByOwnerUsernameIgnoreCaseAndFileSha256(
-      String username, String fileSha256);
-
   Page<ReconciliationRunEntity> findAllByOwnerUsernameIgnoreCase(
       String username, Pageable pageable);
 }

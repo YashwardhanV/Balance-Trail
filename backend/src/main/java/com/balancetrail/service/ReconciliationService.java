@@ -8,11 +8,17 @@ import com.balancetrail.dto.ReconciliationStartResponse;
 import com.balancetrail.dto.ReconciliationSummaryResponse;
 import com.balancetrail.entity.ReconciliationRunEntity;
 import com.balancetrail.exception.ResourceNotFoundException;
+import com.balancetrail.repository.AppUserRepository;
 import com.balancetrail.repository.ReconciliationItemRepository;
 import com.balancetrail.repository.ReconciliationRunRepository;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobParametersBuilder;
+import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -21,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ReconciliationService {
+  private static final Logger log = LoggerFactory.getLogger(ReconciliationService.class);
   private static final List<ItemStatus> DISCREPANCIES =
       List.of(
           ItemStatus.AMOUNT_MISMATCH,
@@ -29,40 +36,83 @@ public class ReconciliationService {
           ItemStatus.DUPLICATE);
 
   private final FileStorageService fileStorageService;
-  private final RunPersistenceService runPersistenceService;
+  private final AppUserRepository userRepository;
   private final ReconciliationRunRepository runRepository;
   private final ReconciliationItemRepository itemRepository;
+  private final RunStateService runStateService;
+  private final JobLauncher jobLauncher;
+  private final Job reconciliationJob;
 
   public ReconciliationService(
       FileStorageService fileStorageService,
-      RunPersistenceService runPersistenceService,
+      AppUserRepository userRepository,
       ReconciliationRunRepository runRepository,
-      ReconciliationItemRepository itemRepository) {
+      ReconciliationItemRepository itemRepository,
+      RunStateService runStateService,
+      @Qualifier("asyncJobLauncher") JobLauncher jobLauncher,
+      @Qualifier("reconciliationJob") Job reconciliationJob) {
     this.fileStorageService = fileStorageService;
-    this.runPersistenceService = runPersistenceService;
+    this.userRepository = userRepository;
     this.runRepository = runRepository;
     this.itemRepository = itemRepository;
+    this.runStateService = runStateService;
+    this.jobLauncher = jobLauncher;
+    this.reconciliationJob = reconciliationJob;
   }
 
+  /**
+   * Stores the CSV, creates a PENDING run and starts the batch job in the background.
+   *
+   * <p>This method is deliberately not {@code @Transactional}: {@code runRepository.save()} commits
+   * immediately, so the run row already exists when the batch thread looks for it.
+   */
   public ReconciliationStartResponse start(MultipartFile file, String username) {
     StoredFile storedFile = fileStorageService.store(file);
+    ReconciliationRunEntity run;
     try {
-      RunCreationDecision decision = runPersistenceService.createOrReuse(storedFile, username);
-      if (decision.reused()) {
+      var owner =
+          userRepository
+              .findByUsernameIgnoreCase(username)
+              .orElseThrow(
+                  () -> new ResourceNotFoundException("Authenticated user no longer exists"));
+
+      // Same bytes uploaded before by this user? Return that run instead of starting a new one.
+      var existing = runRepository.findByOwnerIdAndFileSha256(owner.getId(), storedFile.sha256());
+      if (existing.isPresent()) {
         fileStorageService.deleteQuietly(storedFile.path());
+        return new ReconciliationStartResponse(
+            ReconciliationRunResponse.from(existing.get()), true);
       }
-      return new ReconciliationStartResponse(
-          ReconciliationRunResponse.from(decision.run()), decision.reused());
-    } catch (DataIntegrityViolationException race) {
-      fileStorageService.deleteQuietly(storedFile.path());
-      ReconciliationRunEntity existing =
-          runRepository
-              .findByOwnerUsernameIgnoreCaseAndFileSha256(username, storedFile.sha256())
-              .orElseThrow(() -> race);
-      return new ReconciliationStartResponse(ReconciliationRunResponse.from(existing), true);
+
+      run =
+          runRepository.save(
+              ReconciliationRunEntity.pending(
+                  owner,
+                  storedFile.originalFileName(),
+                  storedFile.sha256(),
+                  storedFile.path().toString()));
     } catch (RuntimeException exception) {
+      // Includes the rare case where two identical uploads race: the unique
+      // (owner_id, file_sha256) constraint rejects the second one with 409 Conflict.
       fileStorageService.deleteQuietly(storedFile.path());
       throw exception;
+    }
+
+    launchJob(run.getId(), storedFile.path().toString());
+    return new ReconciliationStartResponse(ReconciliationRunResponse.from(run), false);
+  }
+
+  private void launchJob(UUID runId, String inputFile) {
+    try {
+      var parameters =
+          new JobParametersBuilder()
+              .addString("runId", runId.toString())
+              .addString("inputFile", inputFile)
+              .toJobParameters();
+      jobLauncher.run(reconciliationJob, parameters); // returns at once; a worker thread runs it
+    } catch (Exception exception) {
+      log.error("Could not launch reconciliation run {}", runId, exception);
+      runStateService.markFailed(runId, "Could not launch batch job: " + exception.getMessage());
     }
   }
 

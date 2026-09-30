@@ -17,6 +17,8 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.launch.support.TaskExecutorJobLauncher;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemProcessor;
@@ -31,10 +33,39 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
 public class BatchConfiguration {
+
+  /** At most two reconciliations run at the same time; later uploads wait in the queue. */
+  @Bean
+  public ThreadPoolTaskExecutor batchTaskExecutor() {
+    var executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(2);
+    executor.setMaxPoolSize(2);
+    executor.setThreadNamePrefix("reconciliation-");
+    executor.setWaitForTasksToCompleteOnShutdown(true);
+    executor.setAwaitTerminationSeconds(30);
+    return executor;
+  }
+
+  /**
+   * Spring Boot's default JobLauncher runs the job on the calling thread. This one hands it to
+   * {@code batchTaskExecutor}, so {@code run()} returns immediately and the API can answer 202.
+   */
+  @Bean
+  public JobLauncher asyncJobLauncher(
+      JobRepository jobRepository,
+      @Qualifier("batchTaskExecutor") ThreadPoolTaskExecutor batchTaskExecutor)
+      throws Exception {
+    var launcher = new TaskExecutorJobLauncher();
+    launcher.setJobRepository(jobRepository);
+    launcher.setTaskExecutor(batchTaskExecutor);
+    launcher.afterPropertiesSet();
+    return launcher;
+  }
 
   @Bean
   public Job reconciliationJob(
