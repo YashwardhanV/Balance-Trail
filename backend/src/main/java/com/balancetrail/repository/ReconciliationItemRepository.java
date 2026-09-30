@@ -14,10 +14,6 @@ import org.springframework.data.repository.query.Param;
 public interface ReconciliationItemRepository
     extends JpaRepository<ReconciliationItemEntity, Long> {
 
-  long countByRunIdAndStatus(UUID runId, ItemStatus status);
-
-  boolean existsByRunIdAndLineNumber(UUID runId, long lineNumber);
-
   Page<ReconciliationItemEntity> findAllByRunIdAndStatusIn(
       UUID runId, Collection<ItemStatus> statuses, Pageable pageable);
 

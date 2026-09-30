@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.springframework.batch.item.file.LineMapper;
 
-/** Maps one physical CSV line while preserving malformed input for the skip listener. */
+/** Maps one physical CSV line. Malformed lines are kept (with a parseError) so they can be reported as INVALID. */
 public class GatewayCsvLineMapper implements LineMapper<RawGatewayRecord> {
 
   @Override

@@ -17,7 +17,7 @@ class GatewayCsvLineMapperTest {
   }
 
   @Test
-  void preservesMalformedRowsForSkipHandling() {
+  void keepsMalformedRowsWithAParseError() {
     var wrongColumns = mapper.mapLine("TX-1,ACC-1,10.00", 3);
     var unclosedQuote = mapper.mapLine("\"TX-1,ACC-1,10.00,2026-08-01", 4);
 

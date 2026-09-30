@@ -1,5 +1,6 @@
 package com.balancetrail.entity;
 
+import com.balancetrail.domain.GatewayTransaction;
 import com.balancetrail.domain.ItemStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -66,19 +67,23 @@ public class ReconciliationItemEntity {
 
   protected ReconciliationItemEntity() {}
 
+  /** A line that passed validation: MATCHED, AMOUNT_MISMATCH, MISSING_IN_LEDGER or DUPLICATE. */
   public static ReconciliationItemEntity result(
       ReconciliationRunEntity run,
-      long lineNumber,
-      String gatewayTransactionId,
-      String accountNumber,
-      BigDecimal gatewayAmount,
-      LocalDate transactionDate,
+      GatewayTransaction gateway,
       LedgerTransactionEntity ledger,
       ItemStatus status,
       String reason) {
-    var item = base(run, lineNumber, gatewayTransactionId, accountNumber, status, reason);
-    item.gatewayAmount = gatewayAmount;
-    item.transactionDate = transactionDate;
+    var item =
+        base(
+            run,
+            gateway.lineNumber(),
+            gateway.transactionId(),
+            gateway.accountNumber(),
+            status,
+            reason);
+    item.gatewayAmount = gateway.amount();
+    item.transactionDate = gateway.transactionDate();
     if (ledger != null) {
       item.ledgerTransactionId = ledger.getTransactionRef();
       item.ledgerAmount = ledger.getAmount();
@@ -86,14 +91,20 @@ public class ReconciliationItemEntity {
     return item;
   }
 
-  public static ReconciliationItemEntity skipped(
+  /** A line that failed validation. Over-long values are cut to fit their columns. */
+  public static ReconciliationItemEntity invalid(
       ReconciliationRunEntity run,
       long lineNumber,
-      String gatewayTransactionId,
+      String transactionId,
       String accountNumber,
-      ItemStatus status,
       String reason) {
-    return base(run, lineNumber, gatewayTransactionId, accountNumber, status, reason);
+    return base(
+        run,
+        lineNumber,
+        cut(transactionId, 64),
+        cut(accountNumber, 32),
+        ItemStatus.INVALID,
+        cut(reason, 500));
   }
 
   private static ReconciliationItemEntity base(
@@ -112,6 +123,10 @@ public class ReconciliationItemEntity {
     item.reason = reason;
     item.createdAt = Instant.now();
     return item;
+  }
+
+  private static String cut(String value, int maxLength) {
+    return value == null || value.length() <= maxLength ? value : value.substring(0, maxLength);
   }
 
   public Long getId() {

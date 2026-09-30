@@ -1,15 +1,12 @@
 package com.balancetrail.batch;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.balancetrail.domain.ItemStatus;
 import com.balancetrail.entity.LedgerTransactionEntity;
 import com.balancetrail.entity.ReconciliationRunEntity;
-import com.balancetrail.exception.DuplicateTransactionException;
-import com.balancetrail.exception.InvalidRecordException;
 import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.service.TransactionMatcher;
 import java.math.BigDecimal;
@@ -30,7 +27,7 @@ class ReconciliationItemProcessorTest {
   }
 
   @Test
-  void createsAmountMismatchResult() throws Exception {
+  void createsAmountMismatchResult() {
     var ledger =
         new LedgerTransactionEntity(
             "TX-1", "ACC-1", new BigDecimal("11.00"), LocalDate.of(2026, 8, 1), "test");
@@ -44,24 +41,35 @@ class ReconciliationItemProcessorTest {
   }
 
   @Test
-  void rejectsMalformedAmountsBeforeDuplicateTracking() {
+  void returnsInvalidResultForMalformedAmount() {
     var processor = processor(List.of());
 
-    assertThatThrownBy(() -> processor.process(raw("TX-1", "10.001", "2026-08-01")))
-        .isInstanceOf(InvalidRecordException.class)
-        .hasMessageContaining("at most 2 decimals");
+    var result = processor.process(raw("TX-1", "10.001", "2026-08-01"));
+
+    assertThat(result.getStatus()).isEqualTo(ItemStatus.INVALID);
+    assertThat(result.getReason()).contains("at most 2 decimals");
+  }
+
+  @Test
+  void returnsInvalidResultForBadDate() {
+    var processor = processor(List.of());
+
+    var result = processor.process(raw("TX-1", "10.00", "01-08-2026"));
+
+    assertThat(result.getStatus()).isEqualTo(ItemStatus.INVALID);
+    assertThat(result.getReason()).contains("yyyy-MM-dd");
   }
 
   @Test
   void detectsIdsAlreadyProcessedBeforeARestart() {
     var processor = processor(List.of("TX-1"));
 
-    assertThatThrownBy(() -> processor.process(raw("TX-1", "10.00", "2026-08-01")))
-        .isInstanceOf(DuplicateTransactionException.class);
+    assertThat(processor.process(raw("TX-1", "10.00", "2026-08-01")).getStatus())
+        .isEqualTo(ItemStatus.DUPLICATE);
   }
 
   @Test
-  void samePhysicalLineCanBeReprocessedAfterAChunkRollback() throws Exception {
+  void samePhysicalLineCanBeReprocessedAfterAChunkRollback() {
     when(ledgerRepository.findById("TX-1")).thenReturn(Optional.empty());
     var processor = processor(List.of());
     var input = raw("TX-1", "10.00", "2026-08-01");
@@ -71,14 +79,13 @@ class ReconciliationItemProcessorTest {
   }
 
   @Test
-  void laterPhysicalLineWithSameIdIsDuplicate() throws Exception {
+  void laterPhysicalLineWithSameIdIsDuplicate() {
     when(ledgerRepository.findById("TX-1")).thenReturn(Optional.empty());
     var processor = processor(List.of());
     processor.process(raw("TX-1", "10.00", "2026-08-01"));
     var later = new RawGatewayRecord(3, "TX-1", "ACC-1", "10.00", "2026-08-01", null);
 
-    assertThatThrownBy(() -> processor.process(later))
-        .isInstanceOf(DuplicateTransactionException.class);
+    assertThat(processor.process(later).getStatus()).isEqualTo(ItemStatus.DUPLICATE);
   }
 
   private ReconciliationItemProcessor processor(List<String> processed) {

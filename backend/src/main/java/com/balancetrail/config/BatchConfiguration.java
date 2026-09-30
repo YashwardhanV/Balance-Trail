@@ -5,16 +5,12 @@ import com.balancetrail.batch.GatewayCsvLineMapper;
 import com.balancetrail.batch.RawGatewayRecord;
 import com.balancetrail.batch.ReconciliationItemProcessor;
 import com.balancetrail.batch.ReconciliationJobListener;
-import com.balancetrail.batch.ReconciliationSkipListener;
 import com.balancetrail.batch.ReconciliationSummaryTasklet;
 import com.balancetrail.entity.ReconciliationItemEntity;
-import com.balancetrail.exception.DuplicateTransactionException;
-import com.balancetrail.exception.InvalidRecordException;
 import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.repository.ReconciliationItemRepository;
 import com.balancetrail.repository.ReconciliationRunRepository;
 import com.balancetrail.service.RunStateService;
-import com.balancetrail.service.SkippedItemRecorder;
 import com.balancetrail.service.TransactionMatcher;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.List;
@@ -64,7 +60,6 @@ public class BatchConfiguration {
       FlatFileItemReader<RawGatewayRecord> gatewayCsvReader,
       ItemProcessor<RawGatewayRecord, ReconciliationItemEntity> reconciliationProcessor,
       JpaItemWriter<ReconciliationItemEntity> reconciliationWriter,
-      ReconciliationSkipListener skipListener,
       BatchTuningProperties properties) {
     var backOff = new ExponentialBackOffPolicy();
     backOff.setInitialInterval(properties.initialRetryDelayMs());
@@ -79,10 +74,6 @@ public class BatchConfiguration {
         .retry(TransientDataAccessException.class)
         .retryLimit(properties.retryLimit())
         .backOffPolicy(backOff)
-        .skip(InvalidRecordException.class)
-        .skip(DuplicateTransactionException.class)
-        .skipLimit(properties.skipLimit())
-        .listener(skipListener)
         .build();
   }
 
@@ -143,14 +134,6 @@ public class BatchConfiguration {
     return new JpaItemWriterBuilder<ReconciliationItemEntity>()
         .entityManagerFactory(entityManagerFactory)
         .build();
-  }
-
-  @Bean
-  @StepScope
-  public ReconciliationSkipListener reconciliationSkipListener(
-      @Value("#{jobParameters['runId']}") String runId,
-      SkippedItemRecorder skippedItemRecorder) {
-    return new ReconciliationSkipListener(UUID.fromString(runId), skippedItemRecorder);
   }
 
   @Bean

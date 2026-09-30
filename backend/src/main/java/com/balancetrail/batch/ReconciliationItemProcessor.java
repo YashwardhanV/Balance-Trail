@@ -1,18 +1,20 @@
 package com.balancetrail.batch;
 
 import com.balancetrail.domain.GatewayTransaction;
+import com.balancetrail.domain.ItemStatus;
 import com.balancetrail.entity.ReconciliationItemEntity;
 import com.balancetrail.entity.ReconciliationRunEntity;
-import com.balancetrail.exception.DuplicateTransactionException;
-import com.balancetrail.exception.InvalidRecordException;
 import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.service.TransactionMatcher;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import org.springframework.batch.item.ItemProcessor;
 
+/**
+ * Turns one CSV line into exactly one result row. Invalid and duplicate lines are not errors
+ * here: they are outcomes the analyst needs to see, so they are returned like any other result.
+ */
 public class ReconciliationItemProcessor
     implements ItemProcessor<RawGatewayRecord, ReconciliationItemEntity> {
 
@@ -34,61 +36,80 @@ public class ReconciliationItemProcessor
 
   @Override
   public ReconciliationItemEntity process(RawGatewayRecord raw) {
-    GatewayTransaction gateway = validate(raw);
+    String error = findValidationError(raw);
+    if (error != null) {
+      return ReconciliationItemEntity.invalid(
+          run, raw.lineNumber(), raw.transactionId(), raw.accountNumber(), error);
+    }
+
+    var gateway =
+        new GatewayTransaction(
+            raw.lineNumber(),
+            raw.transactionId(),
+            raw.accountNumber(),
+            parseAmount(raw.amount()),
+            parseDate(raw.transactionDate()));
+
     if (!duplicateDetector.isFirstOccurrence(gateway.transactionId(), gateway.lineNumber())) {
-      throw new DuplicateTransactionException(gateway.transactionId());
+      return ReconciliationItemEntity.result(
+          run,
+          gateway,
+          null,
+          ItemStatus.DUPLICATE,
+          "Transaction ID already appeared earlier in this file");
     }
 
     var ledger = ledgerRepository.findById(gateway.transactionId());
     var decision = matcher.match(gateway, ledger);
     return ReconciliationItemEntity.result(
-        run,
-        gateway.lineNumber(),
-        gateway.transactionId(),
-        gateway.accountNumber(),
-        gateway.amount(),
-        gateway.transactionDate(),
-        ledger.orElse(null),
-        decision.status(),
-        decision.reason());
+        run, gateway, ledger.orElse(null), decision.status(), decision.reason());
   }
 
-  private GatewayTransaction validate(RawGatewayRecord raw) {
+  /** Returns a human-readable reason when the line is invalid, or null when it is valid. */
+  private String findValidationError(RawGatewayRecord raw) {
     if (raw.parseError() != null) {
-      throw new InvalidRecordException(raw.parseError());
+      return raw.parseError();
     }
     if (isBlank(raw.transactionId())) {
-      throw new InvalidRecordException("Transaction ID is required");
+      return "Transaction ID is required";
     }
     if (raw.transactionId().length() > 64) {
-      throw new InvalidRecordException("Transaction ID exceeds 64 characters");
+      return "Transaction ID exceeds 64 characters";
     }
     if (isBlank(raw.accountNumber())) {
-      throw new InvalidRecordException("Account number is required");
+      return "Account number is required";
     }
     if (raw.accountNumber().length() > 32) {
-      throw new InvalidRecordException("Account number exceeds 32 characters");
+      return "Account number exceeds 32 characters";
     }
 
-    BigDecimal amount;
-    try {
-      amount = new BigDecimal(raw.amount()).setScale(2, RoundingMode.UNNECESSARY);
-    } catch (RuntimeException exception) {
-      throw new InvalidRecordException("Amount must be a positive number with at most 2 decimals");
+    BigDecimal amount = parseAmount(raw.amount());
+    if (amount == null) {
+      return "Amount must be a positive number with at most 2 decimals";
     }
     if (amount.signum() <= 0) {
-      throw new InvalidRecordException("Amount must be greater than zero");
+      return "Amount must be greater than zero";
     }
+    if (parseDate(raw.transactionDate()) == null) {
+      return "Transaction date must use yyyy-MM-dd";
+    }
+    return null;
+  }
 
-    LocalDate date;
+  private BigDecimal parseAmount(String value) {
     try {
-      date = LocalDate.parse(raw.transactionDate());
-    } catch (DateTimeParseException | NullPointerException exception) {
-      throw new InvalidRecordException("Transaction date must use yyyy-MM-dd");
+      return new BigDecimal(value).setScale(2, RoundingMode.UNNECESSARY);
+    } catch (RuntimeException exception) {
+      return null; // not a number, null, or more than 2 decimal places
     }
+  }
 
-    return new GatewayTransaction(
-        raw.lineNumber(), raw.transactionId(), raw.accountNumber(), amount, date);
+  private LocalDate parseDate(String value) {
+    try {
+      return LocalDate.parse(value);
+    } catch (RuntimeException exception) {
+      return null; // wrong format or null
+    }
   }
 
   private boolean isBlank(String value) {
