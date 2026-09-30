@@ -102,7 +102,7 @@ cd backend && ./mvnw verify      # needs Docker running (Testcontainers)
 cd frontend && npm test && npm run build
 ```
 
-GitHub Actions runs both on every push and pull request.
+GitHub Actions runs both on pushes to `main` and on pull requests.
 
 ## Performance
 
