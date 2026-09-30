@@ -1,6 +1,5 @@
 package com.balancetrail.config;
 
-import com.balancetrail.batch.CalculatedBackOffPolicy;
 import com.balancetrail.batch.DuplicateDetector;
 import com.balancetrail.batch.GatewayCsvLineMapper;
 import com.balancetrail.batch.RawGatewayRecord;
@@ -8,7 +7,6 @@ import com.balancetrail.batch.ReconciliationItemProcessor;
 import com.balancetrail.batch.ReconciliationJobListener;
 import com.balancetrail.batch.ReconciliationSkipListener;
 import com.balancetrail.batch.ReconciliationSummaryTasklet;
-import com.balancetrail.batch.RetryDelayCalculator;
 import com.balancetrail.entity.ReconciliationItemEntity;
 import com.balancetrail.exception.DuplicateTransactionException;
 import com.balancetrail.exception.InvalidRecordException;
@@ -38,6 +36,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
@@ -67,9 +66,9 @@ public class BatchConfiguration {
       JpaItemWriter<ReconciliationItemEntity> reconciliationWriter,
       ReconciliationSkipListener skipListener,
       BatchTuningProperties properties) {
-    var retryCalculator =
-        new RetryDelayCalculator(
-            properties.initialRetryDelayMs(), properties.maxRetryDelayMs());
+    var backOff = new ExponentialBackOffPolicy();
+    backOff.setInitialInterval(properties.initialRetryDelayMs());
+    backOff.setMaxInterval(properties.maxRetryDelayMs());
     return new StepBuilder("reconciliationStep", jobRepository)
         .<RawGatewayRecord, ReconciliationItemEntity>chunk(
             properties.chunkSize(), transactionManager)
@@ -79,7 +78,7 @@ public class BatchConfiguration {
         .faultTolerant()
         .retry(TransientDataAccessException.class)
         .retryLimit(properties.retryLimit())
-        .backOffPolicy(new CalculatedBackOffPolicy(retryCalculator))
+        .backOffPolicy(backOff)
         .skip(InvalidRecordException.class)
         .skip(DuplicateTransactionException.class)
         .skipLimit(properties.skipLimit())
