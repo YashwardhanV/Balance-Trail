@@ -8,12 +8,10 @@ import com.balancetrail.batch.ReconciliationJobListener;
 import com.balancetrail.batch.ReconciliationSummaryTasklet;
 import com.balancetrail.entity.ReconciliationItemEntity;
 import com.balancetrail.repository.LedgerTransactionRepository;
-import com.balancetrail.repository.ReconciliationItemRepository;
 import com.balancetrail.repository.ReconciliationRunRepository;
 import com.balancetrail.service.RunStateService;
 import com.balancetrail.service.TransactionMatcher;
 import jakarta.persistence.EntityManagerFactory;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
@@ -104,13 +102,8 @@ public class BatchConfiguration {
 
   @Bean
   @StepScope
-  public DuplicateDetector duplicateDetector(
-      @Value("#{jobParameters['runId']}") String runId,
-      ReconciliationItemRepository itemRepository) {
-    List<String> existing =
-        itemRepository.findProcessedGatewayIds(
-            UUID.fromString(runId), List.of(com.balancetrail.domain.ItemStatus.INVALID, com.balancetrail.domain.ItemStatus.DUPLICATE));
-    return new DuplicateDetector(existing);
+  public DuplicateDetector duplicateDetector() {
+    return new DuplicateDetector();
   }
 
   @Bean

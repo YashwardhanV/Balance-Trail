@@ -1,18 +1,16 @@
 package com.balancetrail.batch;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-/** Step-scoped state. Existing IDs are loaded so a restarted step still detects duplicates. */
+/**
+ * Remembers the first line on which each transaction ID appeared in the current file.
+ *
+ * <p>A later line with the same ID is a duplicate. The same line seen again is not: if a chunk is
+ * retried after a database hiccup, Spring Batch processes its rows a second time.
+ */
 public class DuplicateDetector {
-  private static final long COMMITTED_BEFORE_RESTART = Long.MIN_VALUE;
-  private final Map<String, Long> firstLineById;
-
-  public DuplicateDetector(List<String> alreadyProcessedIds) {
-    this.firstLineById = new HashMap<>();
-    alreadyProcessedIds.forEach(id -> firstLineById.put(id, COMMITTED_BEFORE_RESTART));
-  }
+  private final Map<String, Long> firstLineById = new HashMap<>();
 
   public boolean isFirstOccurrence(String transactionId, long lineNumber) {
     Long firstLine = firstLineById.putIfAbsent(transactionId, lineNumber);

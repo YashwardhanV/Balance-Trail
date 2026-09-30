@@ -18,13 +18,6 @@ public interface ReconciliationItemRepository
       UUID runId, Collection<ItemStatus> statuses, Pageable pageable);
 
   @Query(
-      "select i.gatewayTransactionId from ReconciliationItemEntity i "
-          + "where i.run.id = :runId and i.gatewayTransactionId is not null "
-          + "and i.status not in :excluded")
-  List<String> findProcessedGatewayIds(
-      @Param("runId") UUID runId, @Param("excluded") Collection<ItemStatus> excluded);
-
-  @Query(
       "select i.status, count(i) from ReconciliationItemEntity i "
           + "where i.run.id = :runId group by i.status")
   List<Object[]> countByStatus(@Param("runId") UUID runId);

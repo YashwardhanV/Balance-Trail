@@ -11,7 +11,6 @@ import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.service.TransactionMatcher;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ class ReconciliationItemProcessorTest {
         new LedgerTransactionEntity(
             "TX-1", "ACC-1", new BigDecimal("11.00"), LocalDate.of(2026, 8, 1), "test");
     when(ledgerRepository.findById("TX-1")).thenReturn(Optional.of(ledger));
-    var processor = processor(List.of());
+    var processor = processor();
 
     var result = processor.process(raw("TX-1", "10.00", "2026-08-01"));
 
@@ -42,7 +41,7 @@ class ReconciliationItemProcessorTest {
 
   @Test
   void returnsInvalidResultForMalformedAmount() {
-    var processor = processor(List.of());
+    var processor = processor();
 
     var result = processor.process(raw("TX-1", "10.001", "2026-08-01"));
 
@@ -52,7 +51,7 @@ class ReconciliationItemProcessorTest {
 
   @Test
   void returnsInvalidResultForBadDate() {
-    var processor = processor(List.of());
+    var processor = processor();
 
     var result = processor.process(raw("TX-1", "10.00", "01-08-2026"));
 
@@ -61,17 +60,9 @@ class ReconciliationItemProcessorTest {
   }
 
   @Test
-  void detectsIdsAlreadyProcessedBeforeARestart() {
-    var processor = processor(List.of("TX-1"));
-
-    assertThat(processor.process(raw("TX-1", "10.00", "2026-08-01")).getStatus())
-        .isEqualTo(ItemStatus.DUPLICATE);
-  }
-
-  @Test
   void samePhysicalLineCanBeReprocessedAfterAChunkRollback() {
     when(ledgerRepository.findById("TX-1")).thenReturn(Optional.empty());
-    var processor = processor(List.of());
+    var processor = processor();
     var input = raw("TX-1", "10.00", "2026-08-01");
 
     assertThat(processor.process(input).getStatus()).isEqualTo(ItemStatus.MISSING_IN_LEDGER);
@@ -81,16 +72,16 @@ class ReconciliationItemProcessorTest {
   @Test
   void laterPhysicalLineWithSameIdIsDuplicate() {
     when(ledgerRepository.findById("TX-1")).thenReturn(Optional.empty());
-    var processor = processor(List.of());
+    var processor = processor();
     processor.process(raw("TX-1", "10.00", "2026-08-01"));
     var later = new RawGatewayRecord(3, "TX-1", "ACC-1", "10.00", "2026-08-01", null);
 
     assertThat(processor.process(later).getStatus()).isEqualTo(ItemStatus.DUPLICATE);
   }
 
-  private ReconciliationItemProcessor processor(List<String> processed) {
+  private ReconciliationItemProcessor processor() {
     return new ReconciliationItemProcessor(
-        run, new DuplicateDetector(processed), ledgerRepository, new TransactionMatcher());
+        run, new DuplicateDetector(), ledgerRepository, new TransactionMatcher());
   }
 
   private RawGatewayRecord raw(String id, String amount, String date) {
