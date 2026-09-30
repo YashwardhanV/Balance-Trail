@@ -50,7 +50,7 @@ Returns lifecycle timestamps, failure details if present, and persisted counts. 
 GET /reconciliations/{id}/summary
 ```
 
-The summary includes `matchedCount`, `amountMismatchCount`, `missingInLedgerCount`, `invalidCount`, `duplicateCount`, and the derived `skippedCount`.
+The summary includes `status`, `totalCount`, `matchedCount`, `amountMismatchCount`, `missingInLedgerCount`, `invalidCount` and `duplicateCount`.
 
 ## Get discrepancies
 
@@ -58,7 +58,7 @@ The summary includes `matchedCount`, `amountMismatchCount`, `missingInLedgerCoun
 GET /reconciliations/{id}/discrepancies?page=0&size=20
 ```
 
-Returns all non-matched rows in original CSV line order. Each item contains both gateway and ledger amounts where available, status, and a human-readable reason.
+Returns all non-matched rows (`AMOUNT_MISMATCH`, `MISSING_IN_LEDGER`, `INVALID`, `DUPLICATE`) in original CSV line order. Each item contains both gateway and ledger amounts where available, status, and a human-readable reason.
 
 ## Error shape
 
@@ -84,6 +84,6 @@ Validation and application errors use `application/problem+json` fields:
 | `400` | Invalid file/request parameters |
 | `401` | Missing or invalid credentials |
 | `404` | Run absent or not owned by the caller |
-| `409` | Database constraint conflict not resolved as an idempotent replay |
+| `409` | Database constraint conflict (for example two identical uploads at the same instant) |
 | `413` | Upload exceeds the configured limit |
 | `500` | Unexpected server failure with internal details withheld |

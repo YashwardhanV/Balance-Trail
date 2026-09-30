@@ -40,7 +40,6 @@ erDiagram
         timestamptz created_at
         timestamptz started_at
         timestamptz finished_at
-        bigint version
     }
 
     RECONCILIATION_ITEM {
@@ -61,16 +60,18 @@ erDiagram
 
 ## Constraints and indexes
 
-| Object | Purpose |
+| Object | Why it exists |
 |---|---|
-| `uk_app_user_username` | Prevents duplicate login identities |
-| `ck_ledger_amount_positive` | Keeps invalid ledger money values out of the source of truth |
-| `uk_run_owner_hash (owner_id, file_sha256)` | Makes an identical upload idempotent per analyst |
-| `uk_item_run_line (run_id, line_number)` | Ensures one observable outcome per physical input line |
-| `uk_item_run_accepted_gateway` partial unique index | Prevents two accepted results for one gateway ID while allowing duplicate/invalid evidence rows |
-| `idx_run_owner_created` | Supports newest-first run history |
-| `idx_run_status_created` | Supports lifecycle/operations queries |
-| `idx_item_run_status_line` | Supports paginated discrepancies in CSV order |
-| `idx_ledger_account_date` | Supports plausible future ledger investigation by account and date |
+| `uk_app_user_username` | No two users with the same login |
+| `ck_ledger_amount_positive` | Ledger amounts must be greater than zero |
+| `uk_run_owner_hash (owner_id, file_sha256)` | The same user can't create two runs for the same file |
+| `uk_item_run_line (run_id, line_number)` | One result per CSV line |
+| `ck_run_status`, `ck_item_status` | Only known status values can be stored |
+| `idx_run_owner_created` | Run history: my runs, newest first |
+| `idx_item_run_status_line` | Discrepancy page: this run's non-matched rows in line order |
 
-Spring Batch's `BATCH_*` metadata tables are also stored in PostgreSQL. They belong to the framework's job repository and are intentionally omitted from the business ER diagram.
+Ledger lookups use the `transaction_ref` primary key, so they need no extra index.
+
+`reconciliation_item` ids come from a sequence that hands out 100 values at a time (`allocationSize = 100`). With an identity column Hibernate would have to insert rows one by one to learn each id; with a sequence it can send the 100 inserts of a chunk as one JDBC batch.
+
+Spring Batch also creates its own `BATCH_*` tables in the same database to record job and step executions. They are left out of the diagram above.
