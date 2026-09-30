@@ -9,6 +9,7 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.stereotype.Component;
 
+/** Keeps the reconciliation_run row in step with the batch job: RUNNING, then COMPLETED or FAILED. */
 @Component
 public class ReconciliationJobListener implements JobExecutionListener {
   private static final Logger log = LoggerFactory.getLogger(ReconciliationJobListener.class);
@@ -28,29 +29,23 @@ public class ReconciliationJobListener implements JobExecutionListener {
   @Override
   public void afterJob(JobExecution jobExecution) {
     UUID runId = runId(jobExecution);
-    boolean reconciliationFailed =
-        jobExecution.getStatus() != BatchStatus.COMPLETED
-            || jobExecution.getStepExecutions().stream()
-            .anyMatch(
-                step ->
-                    step.getStepName().equals("reconciliationStep")
-                        && step.getStatus() != BatchStatus.COMPLETED);
-    if (reconciliationFailed) {
-      String message =
-          jobExecution.getAllFailureExceptions().stream()
-              .findFirst()
-              .map(Throwable::getMessage)
-              .orElse("Reconciliation step failed; partial results were summarized");
-      runStateService.markFailed(runId, message);
+    if (jobExecution.getStatus() == BatchStatus.COMPLETED) {
+      try {
+        runStateService.summarize(runId);
+      } catch (RuntimeException exception) {
+        runStateService.markFailed(runId, "Could not summarize results: " + exception.getMessage());
+      }
+    } else {
+      runStateService.markFailed(runId, firstFailureMessage(jobExecution));
     }
-    log.info(
-        "Finished reconciliation run {} with batch status {} in {} ms",
-        runId,
-        jobExecution.getStatus(),
-        jobExecution.getEndTime() == null || jobExecution.getStartTime() == null
-            ? -1
-            : java.time.Duration.between(jobExecution.getStartTime(), jobExecution.getEndTime())
-                .toMillis());
+    log.info("Finished reconciliation run {} with batch status {}", runId, jobExecution.getStatus());
+  }
+
+  private String firstFailureMessage(JobExecution jobExecution) {
+    return jobExecution.getAllFailureExceptions().stream()
+        .findFirst()
+        .map(Throwable::getMessage)
+        .orElse("Reconciliation job failed");
   }
 
   private UUID runId(JobExecution jobExecution) {

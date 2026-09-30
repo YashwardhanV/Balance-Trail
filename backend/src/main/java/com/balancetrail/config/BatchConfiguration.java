@@ -5,11 +5,9 @@ import com.balancetrail.batch.GatewayCsvLineMapper;
 import com.balancetrail.batch.RawGatewayRecord;
 import com.balancetrail.batch.ReconciliationItemProcessor;
 import com.balancetrail.batch.ReconciliationJobListener;
-import com.balancetrail.batch.ReconciliationSummaryTasklet;
 import com.balancetrail.entity.ReconciliationItemEntity;
 import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.repository.ReconciliationRunRepository;
-import com.balancetrail.service.RunStateService;
 import com.balancetrail.service.TransactionMatcher;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.UUID;
@@ -71,14 +69,10 @@ public class BatchConfiguration {
   public Job reconciliationJob(
       JobRepository jobRepository,
       @Qualifier("reconciliationStep") Step reconciliationStep,
-      @Qualifier("reconciliationSummaryStep") Step summaryStep,
       ReconciliationJobListener listener) {
     return new JobBuilder("reconciliationJob", jobRepository)
         .listener(listener)
         .start(reconciliationStep)
-        .on("*")
-        .to(summaryStep)
-        .end()
         .build();
   }
 
@@ -107,16 +101,6 @@ public class BatchConfiguration {
   }
 
   @Bean
-  public Step reconciliationSummaryStep(
-      JobRepository jobRepository,
-      PlatformTransactionManager transactionManager,
-      ReconciliationSummaryTasklet summaryTasklet) {
-    return new StepBuilder("reconciliationSummaryStep", jobRepository)
-        .tasklet(summaryTasklet, transactionManager)
-        .build();
-  }
-
-  @Bean
   @StepScope
   public FlatFileItemReader<RawGatewayRecord> gatewayCsvReader(
       @Value("#{jobParameters['inputFile']}") String inputFile) {
@@ -126,8 +110,6 @@ public class BatchConfiguration {
         .encoding("UTF-8")
         .linesToSkip(1)
         .lineMapper(new GatewayCsvLineMapper())
-        .strict(true)
-        .saveState(true)
         .build();
   }
 
@@ -158,12 +140,5 @@ public class BatchConfiguration {
     return new JpaItemWriterBuilder<ReconciliationItemEntity>()
         .entityManagerFactory(entityManagerFactory)
         .build();
-  }
-
-  @Bean
-  @StepScope
-  public ReconciliationSummaryTasklet reconciliationSummaryTasklet(
-      @Value("#{jobParameters['runId']}") String runId, RunStateService runStateService) {
-    return new ReconciliationSummaryTasklet(UUID.fromString(runId), runStateService);
   }
 }
