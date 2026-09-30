@@ -44,8 +44,6 @@ class ReconciliationApplicationIntegrationTest {
     registry.add("app.bootstrap-user.username", () -> USERNAME);
     registry.add("app.bootstrap-user.password", () -> PASSWORD);
     registry.add("app.storage.upload-directory", () -> "target/test-uploads");
-    registry.add("app.batch.initial-retry-delay-ms", () -> "1");
-    registry.add("app.batch.max-retry-delay-ms", () -> "2");
   }
 
   @Autowired MockMvc mockMvc;

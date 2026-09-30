@@ -83,19 +83,20 @@ public class BatchConfiguration {
       FlatFileItemReader<RawGatewayRecord> gatewayCsvReader,
       ItemProcessor<RawGatewayRecord, ReconciliationItemEntity> reconciliationProcessor,
       JpaItemWriter<ReconciliationItemEntity> reconciliationWriter,
-      BatchTuningProperties properties) {
+      @Value("${app.batch.chunk-size:100}") int chunkSize) {
+    // On a temporary database error, try the chunk up to 3 times in total,
+    // waiting 100 ms and then 200 ms between attempts (doubling, capped at 1 s).
     var backOff = new ExponentialBackOffPolicy();
-    backOff.setInitialInterval(properties.initialRetryDelayMs());
-    backOff.setMaxInterval(properties.maxRetryDelayMs());
+    backOff.setInitialInterval(100);
+    backOff.setMaxInterval(1000);
     return new StepBuilder("reconciliationStep", jobRepository)
-        .<RawGatewayRecord, ReconciliationItemEntity>chunk(
-            properties.chunkSize(), transactionManager)
+        .<RawGatewayRecord, ReconciliationItemEntity>chunk(chunkSize, transactionManager)
         .reader(gatewayCsvReader)
         .processor(reconciliationProcessor)
         .writer(reconciliationWriter)
         .faultTolerant()
         .retry(TransientDataAccessException.class)
-        .retryLimit(properties.retryLimit())
+        .retryLimit(3)
         .backOffPolicy(backOff)
         .build();
   }
