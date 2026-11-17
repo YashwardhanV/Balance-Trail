@@ -1,0 +1,5 @@
+Txn Ref,Customer Email,Acct No,Amount (INR),Settlement Dt,Status
+TXN-1001,ravi@example.in,ACC-1001,1250.00,01/07/2026,SUCCESS
+TXN-1002,meera@example.in,ACC-1002,499.99,01/07/2026,SUCCESS
+TXN-1003,arjun@example.in,ACC-1003,3200.00,02/07/2026,SUCCESS
+TXN-1004,dev@example.in,ACC-1004,85.50,13/07/2026,SUCCESS

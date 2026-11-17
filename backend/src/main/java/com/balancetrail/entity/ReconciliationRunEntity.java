@@ -1,5 +1,6 @@
 package com.balancetrail.entity;
 
+import com.balancetrail.domain.ItemStatus;
 import com.balancetrail.domain.RunStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -55,6 +57,26 @@ public class ReconciliationRunEntity {
   @Column(name = "duplicate_count", nullable = false)
   private long duplicateCount;
 
+  @Column(name = "account_mismatch_count", nullable = false)
+  private long accountMismatchCount;
+
+  @Column(name = "date_mismatch_count", nullable = false)
+  private long dateMismatchCount;
+
+  @Column(name = "missing_in_gateway_count", nullable = false)
+  private long missingInGatewayCount;
+
+  @Column(name = "suggested_pair_count", nullable = false)
+  private long suggestedPairCount;
+
+  /** How the file was read: null = the standard 4-column layout, otherwise a saved gateway format. */
+  @Column(name = "gateway_format_id")
+  private Long gatewayFormatId;
+
+  /** Which ledger import this run was compared against (0 = the seeded demo ledger). */
+  @Column(name = "ledger_version", nullable = false)
+  private long ledgerVersion;
+
   @Column(name = "failure_message", length = 1000)
   private String failureMessage;
 
@@ -70,8 +92,15 @@ public class ReconciliationRunEntity {
   protected ReconciliationRunEntity() {}
 
   public static ReconciliationRunEntity pending(
-      AppUserEntity owner, String originalFileName, String fileSha256, String storedFilePath) {
+      AppUserEntity owner,
+      String originalFileName,
+      String fileSha256,
+      String storedFilePath,
+      long ledgerVersion,
+      Long gatewayFormatId) {
     var run = new ReconciliationRunEntity();
+    run.ledgerVersion = ledgerVersion;
+    run.gatewayFormatId = gatewayFormatId;
     run.owner = owner;
     run.originalFileName = originalFileName;
     run.fileSha256 = fileSha256;
@@ -87,19 +116,28 @@ public class ReconciliationRunEntity {
     failureMessage = null;
   }
 
-  public void complete(
-      long total,
-      long matched,
-      long amountMismatch,
-      long missing,
-      long invalid,
-      long duplicate) {
-    totalCount = total;
-    matchedCount = matched;
-    amountMismatchCount = amountMismatch;
-    missingCount = missing;
-    invalidCount = invalid;
-    duplicateCount = duplicate;
+  /**
+   * Stores the final counts. {@code totalCount} is the number of CSV lines, so ledger-only
+   * MISSING_IN_GATEWAY rows are counted separately and not included in it.
+   */
+  public void complete(Map<ItemStatus, Long> counts, long suggestedPairs) {
+    suggestedPairCount = suggestedPairs;
+    matchedCount = counts.getOrDefault(ItemStatus.MATCHED, 0L);
+    amountMismatchCount = counts.getOrDefault(ItemStatus.AMOUNT_MISMATCH, 0L);
+    accountMismatchCount = counts.getOrDefault(ItemStatus.ACCOUNT_MISMATCH, 0L);
+    dateMismatchCount = counts.getOrDefault(ItemStatus.DATE_MISMATCH, 0L);
+    missingCount = counts.getOrDefault(ItemStatus.MISSING_IN_LEDGER, 0L);
+    missingInGatewayCount = counts.getOrDefault(ItemStatus.MISSING_IN_GATEWAY, 0L);
+    invalidCount = counts.getOrDefault(ItemStatus.INVALID, 0L);
+    duplicateCount = counts.getOrDefault(ItemStatus.DUPLICATE, 0L);
+    totalCount =
+        matchedCount
+            + amountMismatchCount
+            + accountMismatchCount
+            + dateMismatchCount
+            + missingCount
+            + invalidCount
+            + duplicateCount;
     status = RunStatus.COMPLETED;
     finishedAt = Instant.now();
   }
@@ -156,6 +194,30 @@ public class ReconciliationRunEntity {
 
   public long getDuplicateCount() {
     return duplicateCount;
+  }
+
+  public long getAccountMismatchCount() {
+    return accountMismatchCount;
+  }
+
+  public long getDateMismatchCount() {
+    return dateMismatchCount;
+  }
+
+  public long getMissingInGatewayCount() {
+    return missingInGatewayCount;
+  }
+
+  public long getSuggestedPairCount() {
+    return suggestedPairCount;
+  }
+
+  public Long getGatewayFormatId() {
+    return gatewayFormatId;
+  }
+
+  public long getLedgerVersion() {
+    return ledgerVersion;
   }
 
   public String getFailureMessage() {

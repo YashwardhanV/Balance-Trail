@@ -28,6 +28,9 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-change-me-now}
       APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
       UPLOAD_DIRECTORY: /app/data/uploads
+      # Optional. Empty = AI column suggestions off; header rules still work.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     ports:
       - "8080:8080"
     volumes:

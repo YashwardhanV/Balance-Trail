@@ -7,7 +7,10 @@ const styles: Record<RunStatus | ItemStatus, { badge: string; dot: string }> = {
   FAILED: { badge: 'bg-rose-50 text-rose-700 ring-rose-200', dot: 'bg-rose-500' },
   MATCHED: { badge: 'bg-teal-50 text-teal-800 ring-teal-200', dot: 'bg-teal-500' },
   AMOUNT_MISMATCH: { badge: 'bg-amber-50 text-amber-800 ring-amber-200', dot: 'bg-amber-500' },
+  ACCOUNT_MISMATCH: { badge: 'bg-orange-50 text-orange-800 ring-orange-200', dot: 'bg-orange-500' },
+  DATE_MISMATCH: { badge: 'bg-yellow-50 text-yellow-800 ring-yellow-200', dot: 'bg-yellow-500' },
   MISSING_IN_LEDGER: { badge: 'bg-violet-50 text-violet-700 ring-violet-200', dot: 'bg-violet-500' },
+  MISSING_IN_GATEWAY: { badge: 'bg-indigo-50 text-indigo-700 ring-indigo-200', dot: 'bg-indigo-500' },
   INVALID: { badge: 'bg-rose-50 text-rose-700 ring-rose-200', dot: 'bg-rose-500' },
   DUPLICATE: { badge: 'bg-slate-100 text-slate-700 ring-slate-200', dot: 'bg-slate-400' },
 }

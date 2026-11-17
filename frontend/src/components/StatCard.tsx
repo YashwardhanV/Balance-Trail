@@ -1,7 +1,7 @@
 interface StatCardProps {
   label: string
   value: number
-  accent: 'green' | 'orange' | 'violet' | 'rose' | 'slate'
+  accent: 'green' | 'orange' | 'violet' | 'indigo' | 'rose' | 'slate'
   hint: string
 }
 
@@ -9,6 +9,7 @@ const accents: Record<StatCardProps['accent'], { dot: string; wash: string }> = 
   green: { dot: 'bg-teal-500', wash: 'from-teal-50' },
   orange: { dot: 'bg-amber-500', wash: 'from-amber-50' },
   violet: { dot: 'bg-violet-500', wash: 'from-violet-50' },
+  indigo: { dot: 'bg-indigo-500', wash: 'from-indigo-50' },
   rose: { dot: 'bg-rose-500', wash: 'from-rose-50' },
   slate: { dot: 'bg-slate-700', wash: 'from-slate-100' },
 }

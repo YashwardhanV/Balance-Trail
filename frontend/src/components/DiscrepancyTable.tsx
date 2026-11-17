@@ -1,4 +1,5 @@
 import { StatusBadge } from './StatusBadge'
+import { displayId, issueCount, sourceLabel } from '../runStats'
 import type { Discrepancy, ReconciliationRun } from '../types'
 
 interface DiscrepancyTableProps {
@@ -7,7 +8,9 @@ interface DiscrepancyTableProps {
   page: number
   totalPages: number
   loading: boolean
+  exporting: boolean
   onPageChange: (page: number) => void
+  onExport: () => void
 }
 
 const money = new Intl.NumberFormat(undefined, {
@@ -19,17 +22,28 @@ function displayAmount(value: number | null) {
   return value === null ? '\u2014' : money.format(value)
 }
 
+/** Account and date under the amount, so an account or date mismatch is visible at a glance. */
+function SideDetails({ account, date }: { account: string | null; date: string | null }) {
+  if (!account && !date) return null
+  return (
+    <p className="mt-1 text-[11px] font-normal text-slate-500">
+      {[account, date].filter(Boolean).join(' \u00b7 ')}
+    </p>
+  )
+}
+
 export function DiscrepancyTable({
   selectedRun,
   discrepancies,
   page,
   totalPages,
   loading,
+  exporting,
   onPageChange,
+  onExport,
 }: DiscrepancyTableProps) {
-  const issueCount = selectedRun
-    ? selectedRun.amountMismatchCount + selectedRun.missingCount + selectedRun.invalidCount + selectedRun.duplicateCount
-    : 0
+  const issues = selectedRun ? issueCount(selectedRun) : 0
+  const canExport = selectedRun?.status === 'COMPLETED' && issues > 0
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -41,9 +55,19 @@ export function DiscrepancyTable({
             {selectedRun ? selectedRun.fileName : 'Select a completed run'}
           </p>
         </div>
-        <span className="shrink-0 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-800 ring-1 ring-inset ring-amber-200">
-          {loading ? 'Loading...' : `${issueCount.toLocaleString()} ${issueCount === 1 ? 'issue' : 'issues'}`}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-800 ring-1 ring-inset ring-amber-200">
+            {loading ? 'Loading...' : `${issues.toLocaleString()} ${issues === 1 ? 'issue' : 'issues'}`}
+          </span>
+          <button
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-bold text-slate-700 transition hover:border-teal-600 hover:text-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            disabled={!canExport || exporting}
+            onClick={onExport}
+          >
+            {exporting ? 'Preparing...' : 'Download CSV'}
+          </button>
+        </div>
       </div>
       {!selectedRun ? (
         <div className="px-6 py-14 text-center">
@@ -60,7 +84,7 @@ export function DiscrepancyTable({
           <p className="mt-1 text-sm text-slate-500">
             {selectedRun.status === 'RUNNING' || selectedRun.status === 'PENDING'
               ? 'Results will appear here as soon as processing finishes.'
-              : 'Every valid row in this file matched its ledger entry.'}
+              : 'Every valid row matched its ledger entry, and every ledger entry in the date range was in the file.'}
           </p>
         </div>
       ) : (
@@ -78,17 +102,22 @@ export function DiscrepancyTable({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {discrepancies.map((item) => (
-                  <tr key={`${item.lineNumber}-${item.status}`} className="transition hover:bg-slate-50/80">
+                  <tr
+                    key={`${item.lineNumber ?? 'ledger'}-${item.ledgerTransactionId ?? ''}-${item.status}`}
+                    className="transition hover:bg-slate-50/80"
+                  >
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900">{item.transactionId ?? 'Unparseable row'}</p>
-                      <p className="mt-1 text-xs text-slate-500">CSV line {item.lineNumber}</p>
+                      <p className="font-bold text-slate-900">{displayId(item)}</p>
+                      <p className="mt-1 text-xs text-slate-500">{sourceLabel(item)}</p>
                     </td>
                     <td className="px-4 py-4"><StatusBadge status={item.status} /></td>
                     <td className="px-4 py-4 text-right font-semibold tabular-nums text-slate-700">
                       {displayAmount(item.gatewayAmount)}
+                      <SideDetails account={item.accountNumber} date={item.transactionDate} />
                     </td>
                     <td className="px-4 py-4 text-right font-semibold tabular-nums text-slate-700">
                       {displayAmount(item.ledgerAmount)}
+                      <SideDetails account={item.ledgerAccountNumber} date={item.ledgerTransactionDate} />
                     </td>
                     <td className="max-w-sm px-6 py-4 leading-5 text-slate-600">{item.reason}</td>
                   </tr>

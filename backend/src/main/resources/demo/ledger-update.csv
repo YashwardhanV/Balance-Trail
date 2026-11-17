@@ -1,0 +1,4 @@
+transaction_id,account_number,amount,transaction_date,description
+TXN-1009,ACC-1009,250.00,2026-07-01,UPI settlement (was missing)
+TXN-1002,ACC-1002,500.99,2026-07-01,Corrected amount
+TXN-1010,ACC-1010,99.00,not-a-date,This line is rejected

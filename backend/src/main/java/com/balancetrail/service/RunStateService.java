@@ -7,6 +7,7 @@ import com.balancetrail.repository.ReconciliationRunRepository;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,12 +15,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class RunStateService {
   private final ReconciliationRunRepository runRepository;
   private final ReconciliationItemRepository itemRepository;
+  private final JdbcTemplate jdbcTemplate;
 
   public RunStateService(
       ReconciliationRunRepository runRepository,
-      ReconciliationItemRepository itemRepository) {
+      ReconciliationItemRepository itemRepository,
+      JdbcTemplate jdbcTemplate) {
     this.runRepository = runRepository;
     this.itemRepository = itemRepository;
+    this.jdbcTemplate = jdbcTemplate;
   }
 
   @Transactional
@@ -34,12 +38,10 @@ public class RunStateService {
     for (Object[] row : itemRepository.countByStatus(runId)) {
       counts.put((ItemStatus) row[0], (Long) row[1]);
     }
-    long matched = counts.getOrDefault(ItemStatus.MATCHED, 0L);
-    long mismatch = counts.getOrDefault(ItemStatus.AMOUNT_MISMATCH, 0L);
-    long missing = counts.getOrDefault(ItemStatus.MISSING_IN_LEDGER, 0L);
-    long invalid = counts.getOrDefault(ItemStatus.INVALID, 0L);
-    long duplicate = counts.getOrDefault(ItemStatus.DUPLICATE, 0L);
-    find(runId).complete(matched + mismatch + missing + invalid + duplicate, matched, mismatch, missing, invalid, duplicate);
+    Long suggestions =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM match_suggestion WHERE run_id = ?", Long.class, runId);
+    find(runId).complete(counts, suggestions == null ? 0 : suggestions);
   }
 
   @Transactional

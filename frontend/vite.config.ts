@@ -9,6 +9,8 @@ export default defineConfig({
     proxy: {
       '/auth': 'http://localhost:8080',
       '/reconciliations': 'http://localhost:8080',
+      '/ledger-imports': 'http://localhost:8080',
+      '/gateway-formats': 'http://localhost:8080',
       '/actuator': 'http://localhost:8080',
       '/v3': 'http://localhost:8080',
       '/swagger-ui': 'http://localhost:8080',

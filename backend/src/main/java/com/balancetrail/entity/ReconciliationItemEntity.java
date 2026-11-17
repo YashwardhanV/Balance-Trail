@@ -34,8 +34,9 @@ public class ReconciliationItemEntity {
   @JoinColumn(name = "run_id", nullable = false)
   private ReconciliationRunEntity run;
 
-  @Column(name = "line_number", nullable = false)
-  private long lineNumber;
+  /** Null only for MISSING_IN_GATEWAY rows, which come from the ledger, not from a CSV line. */
+  @Column(name = "line_number")
+  private Long lineNumber;
 
   @Column(name = "gateway_transaction_id", length = 64)
   private String gatewayTransactionId;
@@ -55,6 +56,12 @@ public class ReconciliationItemEntity {
   @Column(name = "transaction_date")
   private LocalDate transactionDate;
 
+  @Column(name = "ledger_account_number", length = 32)
+  private String ledgerAccountNumber;
+
+  @Column(name = "ledger_transaction_date")
+  private LocalDate ledgerTransactionDate;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
   private ItemStatus status;
@@ -67,7 +74,7 @@ public class ReconciliationItemEntity {
 
   protected ReconciliationItemEntity() {}
 
-  /** A line that passed validation: MATCHED, AMOUNT_MISMATCH, MISSING_IN_LEDGER or DUPLICATE. */
+  /** A line that passed validation: a match, a mismatch, MISSING_IN_LEDGER or DUPLICATE. */
   public static ReconciliationItemEntity result(
       ReconciliationRunEntity run,
       GatewayTransaction gateway,
@@ -87,6 +94,8 @@ public class ReconciliationItemEntity {
     if (ledger != null) {
       item.ledgerTransactionId = ledger.getTransactionRef();
       item.ledgerAmount = ledger.getAmount();
+      item.ledgerAccountNumber = ledger.getAccountNumber();
+      item.ledgerTransactionDate = ledger.getTransactionDate();
     }
     return item;
   }
@@ -133,7 +142,7 @@ public class ReconciliationItemEntity {
     return id;
   }
 
-  public long getLineNumber() {
+  public Long getLineNumber() {
     return lineNumber;
   }
 
@@ -159,6 +168,14 @@ public class ReconciliationItemEntity {
 
   public LocalDate getTransactionDate() {
     return transactionDate;
+  }
+
+  public String getLedgerAccountNumber() {
+    return ledgerAccountNumber;
+  }
+
+  public LocalDate getLedgerTransactionDate() {
+    return ledgerTransactionDate;
   }
 
   public ItemStatus getStatus() {

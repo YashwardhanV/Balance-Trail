@@ -1,0 +1,82 @@
+{
+  "measured": "2026-11-16",
+  "machine": "Linux cloud VM, 2 vCPU, 7 GB RAM, Java 21, PostgreSQL 16 on the same machine (not Docker), default fsync settings",
+  "method": "scripts/generate_benchmark_data.py data; ledger loaded first (old code: COPY + ANALYZE; new code: POST /ledger-imports, which runs ANALYZE itself); seconds = finishedAt - startedAt of the run",
+  "latency_1ms": {
+    "note": "a TCP proxy delayed every app-to-database packet by 1 ms, to simulate a database across a network or Docker Desktop's VM",
+    "before_0.1.0": {
+      "10000": [
+        21.4,
+        21.83
+      ],
+      "100000": [
+        170.54,
+        174.06,
+        173.45
+      ]
+    },
+    "after_0.2.0": {
+      "10000": [
+        4.67,
+        4.44
+      ],
+      "100000": [
+        25.2,
+        23.21,
+        22.53
+      ]
+    },
+    "after_0.2.0_ledger_import_91000_rows_seconds": [
+      11.87,
+      11.65,
+      11.28
+    ]
+  },
+  "no_added_latency": {
+    "before_0.1.0": {
+      "10000": [
+        6.46
+      ],
+      "100000": [
+        16.16,
+        11.22,
+        10.39
+      ]
+    },
+    "after_0.2.0": {
+      "10000": [
+        3.27
+      ],
+      "100000": [
+        12.42,
+        10.47
+      ]
+    },
+    "after_0.2.0_ledger_import_91000_rows_seconds": [
+      5.22,
+      4.38
+    ]
+  },
+  "stale_plan_finding": {
+    "after_0.2.0_without_ANALYZE_first_100000_run_seconds": [
+      59.01,
+      56.65
+    ],
+    "after_0.2.0_with_ANALYZE_first_100000_run_seconds": [
+      14.24,
+      12.42
+    ]
+  },
+  "ledger_select_statements_per_300_rows": {
+    "before_0.1.0": 300,
+    "after_0.2.0": 3
+  },
+  "counts_every_100000_run": {
+    "matched": 80000,
+    "amountMismatch": 10000,
+    "missingInLedger": 7000,
+    "invalid": 2000,
+    "duplicate": 1000,
+    "missingInGateway_after_only": 1000
+  }
+}

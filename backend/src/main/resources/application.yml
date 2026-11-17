@@ -46,6 +46,12 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  ai:
+    gemini:
+      # Leave empty to turn AI suggestions off; header rules still work.
+      api-key: ${GEMINI_API_KEY:}
+      model: ${GEMINI_MODEL:gemini-3.8-flash}
+      timeout: ${GEMINI_TIMEOUT:10s}
   storage:
     upload-directory: ${UPLOAD_DIRECTORY:./data/uploads}
   bootstrap-user:
@@ -53,3 +59,8 @@ app:
     password: ${APP_PASSWORD:change-me-now}
   batch:
     chunk-size: 100
+  matching:
+    # Gateway and ledger dates this many days apart still count as the same date (settlement delay).
+    date-tolerance-days: ${MATCH_DATE_TOLERANCE_DAYS:2}
+    # Pair suggestions: IDs at most this many characters apart count as "probably a typo".
+    max-id-distance: ${MATCH_MAX_ID_DISTANCE:2}

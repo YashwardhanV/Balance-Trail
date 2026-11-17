@@ -2,7 +2,7 @@
   "name": "balancetrail-frontend",
   "author": "Yashwardhan Verma <yashwardhanverma108@gmail.com> (https://github.com/YashwardhanV)",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

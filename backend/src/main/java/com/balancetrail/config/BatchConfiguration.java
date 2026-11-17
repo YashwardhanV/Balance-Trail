@@ -2,12 +2,18 @@ package com.balancetrail.config;
 
 import com.balancetrail.batch.DuplicateDetector;
 import com.balancetrail.batch.GatewayCsvLineMapper;
+import com.balancetrail.batch.LedgerMatchingItemWriter;
+import com.balancetrail.batch.MissingInGatewayTasklet;
+import com.balancetrail.batch.PairSuggester;
+import com.balancetrail.batch.PairSuggestionTasklet;
+import com.balancetrail.batch.ProcessedLine;
 import com.balancetrail.batch.RawGatewayRecord;
 import com.balancetrail.batch.ReconciliationItemProcessor;
 import com.balancetrail.batch.ReconciliationJobListener;
 import com.balancetrail.entity.ReconciliationItemEntity;
 import com.balancetrail.repository.LedgerTransactionRepository;
 import com.balancetrail.repository.ReconciliationRunRepository;
+import com.balancetrail.service.GatewayFormatService;
 import com.balancetrail.service.TransactionMatcher;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.UUID;
@@ -21,6 +27,7 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.LineMapper;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.batch.item.database.builder.JpaItemWriterBuilder;
@@ -30,6 +37,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.dao.TransientDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -69,11 +77,55 @@ public class BatchConfiguration {
   public Job reconciliationJob(
       JobRepository jobRepository,
       @Qualifier("reconciliationStep") Step reconciliationStep,
+      @Qualifier("missingInGatewayStep") Step missingInGatewayStep,
+      @Qualifier("pairSuggestionStep") Step pairSuggestionStep,
       ReconciliationJobListener listener) {
+    // Step 1: every gateway line against the ledger. Step 2: ledger rows the file never mentions.
+    // Step 3: suggest "probably the same payment" pairs between the leftovers of steps 1 and 2.
     return new JobBuilder("reconciliationJob", jobRepository)
         .listener(listener)
         .start(reconciliationStep)
+        .next(missingInGatewayStep)
+        .next(pairSuggestionStep)
         .build();
+  }
+
+  @Bean
+  public Step pairSuggestionStep(
+      JobRepository jobRepository,
+      PlatformTransactionManager transactionManager,
+      PairSuggestionTasklet pairSuggestionTasklet) {
+    return new StepBuilder("pairSuggestionStep", jobRepository)
+        .tasklet(pairSuggestionTasklet, transactionManager)
+        .build();
+  }
+
+  @Bean
+  @StepScope
+  public PairSuggestionTasklet pairSuggestionTasklet(
+      @Value("#{jobParameters['runId']}") String runId,
+      JdbcTemplate jdbcTemplate,
+      @Value("${app.matching.date-tolerance-days:2}") int dateToleranceDays,
+      @Value("${app.matching.max-id-distance:2}") int maxIdDistance) {
+    return new PairSuggestionTasklet(
+        jdbcTemplate, new PairSuggester(dateToleranceDays, maxIdDistance), UUID.fromString(runId));
+  }
+
+  @Bean
+  public Step missingInGatewayStep(
+      JobRepository jobRepository,
+      PlatformTransactionManager transactionManager,
+      MissingInGatewayTasklet missingInGatewayTasklet) {
+    return new StepBuilder("missingInGatewayStep", jobRepository)
+        .tasklet(missingInGatewayTasklet, transactionManager)
+        .build();
+  }
+
+  @Bean
+  @StepScope
+  public MissingInGatewayTasklet missingInGatewayTasklet(
+      @Value("#{jobParameters['runId']}") String runId, JdbcTemplate jdbcTemplate) {
+    return new MissingInGatewayTasklet(jdbcTemplate, UUID.fromString(runId));
   }
 
   @Bean
@@ -81,8 +133,8 @@ public class BatchConfiguration {
       JobRepository jobRepository,
       PlatformTransactionManager transactionManager,
       FlatFileItemReader<RawGatewayRecord> gatewayCsvReader,
-      ItemProcessor<RawGatewayRecord, ReconciliationItemEntity> reconciliationProcessor,
-      JpaItemWriter<ReconciliationItemEntity> reconciliationWriter,
+      ItemProcessor<RawGatewayRecord, ProcessedLine> reconciliationProcessor,
+      LedgerMatchingItemWriter reconciliationWriter,
       @Value("${app.batch.chunk-size:100}") int chunkSize) {
     // On a temporary database error, try the chunk up to 3 times in total,
     // waiting 100 ms and then 200 ms between attempts (doubling, capped at 1 s).
@@ -90,7 +142,7 @@ public class BatchConfiguration {
     backOff.setInitialInterval(100);
     backOff.setMaxInterval(1000);
     return new StepBuilder("reconciliationStep", jobRepository)
-        .<RawGatewayRecord, ReconciliationItemEntity>chunk(chunkSize, transactionManager)
+        .<RawGatewayRecord, ProcessedLine>chunk(chunkSize, transactionManager)
         .reader(gatewayCsvReader)
         .processor(reconciliationProcessor)
         .writer(reconciliationWriter)
@@ -104,13 +156,20 @@ public class BatchConfiguration {
   @Bean
   @StepScope
   public FlatFileItemReader<RawGatewayRecord> gatewayCsvReader(
-      @Value("#{jobParameters['inputFile']}") String inputFile) {
+      @Value("#{jobParameters['inputFile']}") String inputFile,
+      @Value("#{jobParameters['formatId']}") String formatId,
+      GatewayFormatService formatService) {
+    // Standard layout, or a saved gateway format that picks and converts the four columns.
+    LineMapper<RawGatewayRecord> lineMapper =
+        formatId == null || "0".equals(formatId)
+            ? new GatewayCsvLineMapper()
+            : formatService.lineMapper(formatService.find(Long.parseLong(formatId)));
     return new FlatFileItemReaderBuilder<RawGatewayRecord>()
         .name("gatewayCsvReader")
         .resource(new FileSystemResource(inputFile))
         .encoding("UTF-8")
         .linesToSkip(1)
-        .lineMapper(new GatewayCsvLineMapper())
+        .lineMapper(lineMapper)
         .build();
   }
 
@@ -125,18 +184,29 @@ public class BatchConfiguration {
   public ReconciliationItemProcessor reconciliationProcessor(
       @Value("#{jobParameters['runId']}") String runId,
       ReconciliationRunRepository runRepository,
-      DuplicateDetector duplicateDetector,
-      LedgerTransactionRepository ledgerRepository,
-      TransactionMatcher matcher) {
+      DuplicateDetector duplicateDetector) {
     return new ReconciliationItemProcessor(
+        runRepository.getReferenceById(UUID.fromString(runId)), duplicateDetector);
+  }
+
+  /** Looks up the ledger once per chunk, compares, then hands the results to the JPA writer. */
+  @Bean
+  @StepScope
+  public LedgerMatchingItemWriter reconciliationWriter(
+      @Value("#{jobParameters['runId']}") String runId,
+      ReconciliationRunRepository runRepository,
+      LedgerTransactionRepository ledgerRepository,
+      TransactionMatcher matcher,
+      JpaItemWriter<ReconciliationItemEntity> reconciliationItemJpaWriter) {
+    return new LedgerMatchingItemWriter(
         runRepository.getReferenceById(UUID.fromString(runId)),
-        duplicateDetector,
         ledgerRepository,
-        matcher);
+        matcher,
+        reconciliationItemJpaWriter);
   }
 
   @Bean
-  public JpaItemWriter<ReconciliationItemEntity> reconciliationWriter(
+  public JpaItemWriter<ReconciliationItemEntity> reconciliationItemJpaWriter(
       EntityManagerFactory entityManagerFactory) {
     return new JpaItemWriterBuilder<ReconciliationItemEntity>()
         .entityManagerFactory(entityManagerFactory)

@@ -1,7 +1,11 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import type { GatewayFormat } from '../types'
 
 interface UploadPanelProps {
   busy: boolean
+  formats: GatewayFormat[]
+  formatId: number | null
+  onFormatChange: (formatId: number | null) => void
   onUpload: (file: File) => Promise<void>
 }
 
@@ -10,7 +14,7 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024).toFixed(bytes >= 1024 * 10 ? 0 : 1)} KB`
 }
 
-export function UploadPanel({ busy, onUpload }: UploadPanelProps) {
+export function UploadPanel({ busy, formats, formatId, onFormatChange, onUpload }: UploadPanelProps) {
   const [selected, setSelected] = useState<File | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -42,7 +46,7 @@ export function UploadPanel({ busy, onUpload }: UploadPanelProps) {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-300">
-            Upload a CSV and compare it with the seeded ledger. An identical file safely reopens its original run.
+            Upload a gateway CSV and compare it with the current ledger, in both directions. An identical file reopens its earlier run unless the ledger has changed or that run failed.
           </p>
         </div>
 
@@ -66,6 +70,21 @@ export function UploadPanel({ busy, onUpload }: UploadPanelProps) {
               accept=".csv,text/csv"
               onChange={selectFile}
             />
+          </label>
+          <label className="shrink-0 text-xs font-bold text-slate-600">
+            File layout
+            <select
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal text-slate-800"
+              value={formatId ?? ''}
+              onChange={(event) => onFormatChange(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">Standard (4 columns)</option>
+              {formats.map((format) => (
+                <option key={format.id} value={format.id}>
+                  {format.name}
+                </option>
+              ))}
+            </select>
           </label>
           <button
             className="shrink-0 rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"

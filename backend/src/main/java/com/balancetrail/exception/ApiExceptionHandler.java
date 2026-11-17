@@ -25,6 +25,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler({
     InvalidUploadException.class,
+    InvalidRequestException.class,
     MethodArgumentNotValidException.class,
     ConstraintViolationException.class
   })
@@ -47,6 +48,11 @@ public class ApiExceptionHandler {
         "File too large",
         "The CSV exceeds the configured upload limit",
         request);
+  }
+
+  @ExceptionHandler(ConflictException.class)
+  public ProblemDetail busy(ConflictException exception, HttpServletRequest request) {
+    return problem(HttpStatus.CONFLICT, "Conflict", exception.getMessage(), request);
   }
 
   @ExceptionHandler(DataIntegrityViolationException.class)

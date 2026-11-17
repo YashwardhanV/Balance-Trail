@@ -10,7 +10,10 @@ public record ReconciliationSummaryResponse(
     long totalCount,
     long matchedCount,
     long amountMismatchCount,
+    long accountMismatchCount,
+    long dateMismatchCount,
     long missingInLedgerCount,
+    long missingInGatewayCount,
     long invalidCount,
     long duplicateCount) {
 
@@ -21,7 +24,10 @@ public record ReconciliationSummaryResponse(
         run.getTotalCount(),
         run.getMatchedCount(),
         run.getAmountMismatchCount(),
+        run.getAccountMismatchCount(),
+        run.getDateMismatchCount(),
         run.getMissingCount(),
+        run.getMissingInGatewayCount(),
         run.getInvalidCount(),
         run.getDuplicateCount());
   }

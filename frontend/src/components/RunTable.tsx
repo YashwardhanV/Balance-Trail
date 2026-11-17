@@ -1,4 +1,5 @@
 import { StatusBadge } from './StatusBadge'
+import { issueCount } from '../runStats'
 import type { ReconciliationRun } from '../types'
 
 interface RunTableProps {
@@ -44,7 +45,7 @@ export function RunTable({ runs, selectedId, onSelect }: RunTableProps) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {runs.map((run) => {
-                const issues = run.amountMismatchCount + run.missingCount + run.invalidCount + run.duplicateCount
+                const issues = issueCount(run)
                 const selected = run.id === selectedId
                 return (
                   <tr

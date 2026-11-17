@@ -1,0 +1,29 @@
+{
+  "measured": "2026-11-16",
+  "version": "0.3.0",
+  "machine": "Linux cloud VM, 2 vCPU, 7 GB RAM, Java 21, PostgreSQL 16 on the same machine, no added latency",
+  "method": "scripts/generate_benchmark_data.py (now with 1 typo pair per 100 rows); ledger via POST /ledger-imports; seconds = finishedAt - startedAt",
+  "100000_rows": {
+    "standard_layout_seconds": [
+      10.4,
+      10.74
+    ],
+    "messy_layout_via_gateway_format_seconds": [
+      11.11,
+      11.01
+    ],
+    "pair_suggestion_step_seconds": [
+      0.121,
+      0.128,
+      0.126,
+      0.098
+    ],
+    "leftover_rows_compared": {
+      "missing_in_ledger": 7000,
+      "missing_in_gateway": 2000
+    },
+    "suggested_pairs": 1000,
+    "counts_matched_expected_manifest": true
+  },
+  "generator_bug_found": "with amount = index % 50000 and account = index % 10000, rows 50,000 apart were identical in account and amount with IDs 2 characters apart, so every typo row fitted two ledger rows: 2,000 ambiguous suggestions instead of 1,000. Fixed by using index % 49999."
+}

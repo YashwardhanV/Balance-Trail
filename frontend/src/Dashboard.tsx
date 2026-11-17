@@ -2,11 +2,24 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
 import { BrandMark } from './components/BrandMark'
 import { DiscrepancyTable } from './components/DiscrepancyTable'
+import { FormatPanel } from './components/FormatPanel'
+import { SuggestionPanel } from './components/SuggestionPanel'
+import { LedgerPanel } from './components/LedgerPanel'
 import { RunTable } from './components/RunTable'
 import { StatCard } from './components/StatCard'
 import { StatusBadge } from './components/StatusBadge'
 import { UploadPanel } from './components/UploadPanel'
-import type { Credentials, CurrentUser, Discrepancy, ReconciliationRun } from './types'
+import type {
+  Credentials,
+  CurrentUser,
+  Discrepancy,
+  FormatForm,
+  GatewayFormat,
+  LedgerImport,
+  MappingSuggestion,
+  MatchSuggestion,
+  ReconciliationRun,
+} from './types'
 
 interface DashboardProps {
   credentials: Credentials
@@ -22,16 +35,30 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
   const [discrepancyPages, setDiscrepancyPages] = useState(0)
   const [loadingDiscrepancies, setLoadingDiscrepancies] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [ledgerImports, setLedgerImports] = useState<LedgerImport[]>([])
+  const [ledgerUploading, setLedgerUploading] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [formats, setFormats] = useState<GatewayFormat[]>([])
+  const [formatId, setFormatId] = useState<number | null>(null)
+  const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const selectedRun = runs.find((run) => run.id === selectedId) ?? null
-  const hasActiveRun = runs.some((run) => run.status === 'PENDING' || run.status === 'RUNNING')
+  const hasActiveRun =
+    runs.some((run) => run.status === 'PENDING' || run.status === 'RUNNING') ||
+    ledgerImports.some((item) => item.status === 'PENDING' || item.status === 'RUNNING')
 
   const loadRuns = useCallback(
     async (signal?: AbortSignal) => {
-      const page = await api.listRuns(credentials, signal)
+      const [page, ledgerPage, formatList] = await Promise.all([
+        api.listRuns(credentials, signal),
+        api.listLedgerImports(credentials, signal),
+        api.listFormats(credentials, signal),
+      ])
       setRuns(page.content)
+      setLedgerImports(ledgerPage.content)
+      setFormats(formatList)
       setSelectedId((current) => current ?? page.content[0]?.id ?? null)
     },
     [credentials],
@@ -79,12 +106,78 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
     return () => controller.abort()
   }, [credentials, selectedId, discrepancyPage, selectedRun?.status])
 
+  const suggestionsToLoad =
+    selectedRun?.status === 'COMPLETED' && selectedRun.suggestedPairCount > 0 ? selectedRun.id : null
+
+  useEffect(() => {
+    if (!suggestionsToLoad) {
+      setSuggestions([])
+      return undefined
+    }
+    const controller = new AbortController()
+    api
+      .suggestions(credentials, suggestionsToLoad, controller.signal)
+      .then((page) => setSuggestions(page.content))
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === 'AbortError') return
+        setError(reason instanceof Error ? reason.message : 'Could not load suggested pairs')
+      })
+    return () => controller.abort()
+  }, [credentials, suggestionsToLoad])
+
+  async function decideSuggestion(suggestion: MatchSuggestion, decision: 'confirm' | 'reject', note?: string) {
+    if (!selectedRun) return
+    try {
+      await api.decideSuggestion(credentials, selectedRun.id, suggestion.id, decision, note)
+      // Confirming can close other suggestions too, so reload the whole list.
+      setSuggestions((await api.suggestions(credentials, selectedRun.id)).content)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save the decision')
+    }
+  }
+
+  async function suggestMapping(file: File): Promise<MappingSuggestion | null> {
+    setError(null)
+    try {
+      return await api.suggestMapping(credentials, file)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not read the sample file')
+      return null
+    }
+  }
+
+  async function saveFormat(suggestion: MappingSuggestion, form: FormatForm): Promise<boolean> {
+    setError(null)
+    try {
+      const created = await api.createFormat(credentials, {
+        ...form,
+        name: form.name.trim(),
+        headers: suggestion.headers,
+        // If the analyst changed a suggested column, the mapping is theirs, not the suggester's.
+        suggestedBy:
+          form.transactionIdColumn === suggestion.transactionIdColumn &&
+          form.accountNumberColumn === suggestion.accountNumberColumn &&
+          form.amountColumn === suggestion.amountColumn &&
+          form.transactionDateColumn === suggestion.transactionDateColumn
+            ? suggestion.suggestedBy
+            : 'MANUAL',
+      })
+      setFormats(await api.listFormats(credentials))
+      setFormatId(created.id)
+      setMessage(`Format "${created.name}" saved and selected for your next upload.`)
+      return true
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save the format')
+      return false
+    }
+  }
+
   async function upload(file: File) {
     setUploading(true)
     setError(null)
     setMessage(null)
     try {
-      const response = await api.upload(credentials, file)
+      const response = await api.upload(credentials, file, formatId)
       setSelectedId(response.reconciliation.id)
       setDiscrepancyPage(0)
       setMessage(
@@ -97,6 +190,50 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
       setError(reason instanceof Error ? reason.message : 'Could not upload the CSV')
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function uploadLedger(file: File) {
+    setLedgerUploading(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const created = await api.uploadLedger(credentials, file)
+      setMessage(
+        `Ledger import v${created.id} accepted. Runs started after it finishes are compared with the new ledger.`,
+      )
+      await loadRuns()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not upload the ledger')
+    } finally {
+      setLedgerUploading(false)
+    }
+  }
+
+  async function exportDiscrepancies() {
+    if (!selectedRun) return
+    setExporting(true)
+    try {
+      const blob = await api.exportDiscrepancies(credentials, selectedRun.id)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `discrepancies-${selectedRun.fileName.replace(/\.csv$/i, '')}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not download the discrepancies')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  async function loadLedgerErrors(importId: number) {
+    try {
+      return (await api.ledgerImportErrors(credentials, importId)).content
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not load rejected ledger lines')
+      return []
     }
   }
 
@@ -136,7 +273,7 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Daily operations</p>
             <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-4xl">Reconciliation control room</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Import transaction files, monitor Spring Batch processing, and investigate every unmatched record.
+              Keep the ledger current, import gateway files, and investigate every record that does not line up, in both directions.
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
@@ -145,7 +282,22 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
           </div>
         </div>
 
-        <UploadPanel busy={uploading} onUpload={upload} />
+        <UploadPanel
+          busy={uploading}
+          formats={formats}
+          formatId={formatId}
+          onFormatChange={setFormatId}
+          onUpload={upload}
+        />
+
+        <FormatPanel onSuggest={suggestMapping} onSave={saveFormat} />
+
+        <LedgerPanel
+          imports={ledgerImports}
+          busy={ledgerUploading}
+          onUpload={uploadLedger}
+          loadErrors={loadLedgerErrors}
+        />
 
         <div aria-live="polite" className="space-y-3">
           {message ? (
@@ -173,11 +325,25 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
             </div>
             {selectedRun ? <StatusBadge status={selectedRun.status} /> : null}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Total records" value={selectedRun?.totalCount ?? 0} accent="slate" hint="Rows accepted by the job" />
-            <StatCard label="Matched" value={selectedRun?.matchedCount ?? 0} accent="green" hint="Amount and ledger aligned" />
-            <StatCard label="Amount mismatch" value={selectedRun?.amountMismatchCount ?? 0} accent="orange" hint="Transaction found, value differs" />
-            <StatCard label="Missing" value={selectedRun?.missingCount ?? 0} accent="violet" hint="No ledger entry located" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <StatCard label="File lines" value={selectedRun?.totalCount ?? 0} accent="slate" hint="Rows read from the gateway CSV" />
+            <StatCard label="Matched" value={selectedRun?.matchedCount ?? 0} accent="green" hint="Amount, account and date agree" />
+            <StatCard
+              label="Mismatched"
+              value={
+                (selectedRun?.amountMismatchCount ?? 0) +
+                (selectedRun?.accountMismatchCount ?? 0) +
+                (selectedRun?.dateMismatchCount ?? 0)
+              }
+              accent="orange"
+              hint={
+                selectedRun
+                  ? `Amount ${selectedRun.amountMismatchCount}, account ${selectedRun.accountMismatchCount}, date ${selectedRun.dateMismatchCount}`
+                  : 'Amount, account or date differs'
+              }
+            />
+            <StatCard label="Missing in ledger" value={selectedRun?.missingCount ?? 0} accent="violet" hint="In the file, not in the ledger" />
+            <StatCard label="Missing in file" value={selectedRun?.missingInGatewayCount ?? 0} accent="indigo" hint="In the ledger, not in the file" />
             <StatCard
               label="Invalid / duplicate"
               value={(selectedRun?.invalidCount ?? 0) + (selectedRun?.duplicateCount ?? 0)}
@@ -193,6 +359,8 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
           </p>
         ) : null}
 
+        <SuggestionPanel run={selectedRun} suggestions={suggestions} onDecide={decideSuggestion} />
+
         <div className="grid items-start gap-6 2xl:grid-cols-[0.95fr_1.3fr]">
           <RunTable runs={runs} selectedId={selectedId} onSelect={selectRun} />
           <DiscrepancyTable
@@ -201,7 +369,9 @@ export function Dashboard({ credentials, user, onLogout }: DashboardProps) {
             page={discrepancyPage}
             totalPages={discrepancyPages}
             loading={loadingDiscrepancies}
+            exporting={exporting}
             onPageChange={setDiscrepancyPage}
+            onExport={exportDiscrepancies}
           />
         </div>
       </main>

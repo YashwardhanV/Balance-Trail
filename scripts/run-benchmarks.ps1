@@ -23,7 +23,9 @@ $results = @()
 foreach ($size in $Sizes) {
     foreach ($runNumber in 1..$Runs) {
         $prefix = "BENCH-$size-R$runNumber-$(Get-Date -Format 'yyyyMMddHHmmssfff')"
-        $manifestJson = docker run --rm -v "${projectRoot}:/workspace" -w /workspace python:3.13-alpine python scripts/generate_benchmark_data.py --records $size --prefix $prefix --output-dir benchmark-data
+        # A different date per run, so ledger rows from earlier runs don't count as missing from this file.
+        $day = (Get-Date "2027-01-01").AddDays($results.Count * 7).ToString("yyyy-MM-dd")
+        $manifestJson = docker run --rm -v "${projectRoot}:/workspace" -w /workspace python:3.13-alpine python scripts/generate_benchmark_data.py --records $size --prefix $prefix --output-dir benchmark-data --date $day
         $manifest = $manifestJson | ConvertFrom-Json
         $gatewayPath = if ([System.IO.Path]::IsPathRooted($manifest.gateway)) { $manifest.gateway } else { Join-Path $projectRoot $manifest.gateway }
         $ledgerPath = if ([System.IO.Path]::IsPathRooted($manifest.ledger)) { $manifest.ledger } else { Join-Path $projectRoot $manifest.ledger }
@@ -32,6 +34,8 @@ foreach ($size in $Sizes) {
         docker cp $ledgerPath "${databaseContainer}:$containerCsv" | Out-Null
         $copySql = "COPY ledger_transaction (transaction_ref, account_number, amount, transaction_date, description) FROM '$containerCsv' WITH (FORMAT csv, HEADER true)"
         docker compose -f (Join-Path $projectRoot "docker-compose.yml") exec -T db psql -v ON_ERROR_STOP=1 -U $DatabaseUser -d $DatabaseName -c $copySql | Out-Null
+        # COPY bypasses the ledger import job, so refresh statistics here the way the job does.
+        docker compose -f (Join-Path $projectRoot "docker-compose.yml") exec -T db psql -v ON_ERROR_STOP=1 -U $DatabaseUser -d $DatabaseName -c "ANALYZE ledger_transaction" | Out-Null
 
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $response = curl.exe --silent --show-error --fail -u "${Username}:$Password" -F "file=@$gatewayPath" "$BaseUrl/reconciliations" | ConvertFrom-Json
@@ -59,7 +63,11 @@ foreach ($size in $Sizes) {
             recordsPerSecond = if ($batchSeconds -gt 0) { [Math]::Round($run.totalCount / $batchSeconds, 2) } else { 0 }
             matched = $run.matchedCount
             amountMismatch = $run.amountMismatchCount
+            accountMismatch = $run.accountMismatchCount
+            dateMismatch = $run.dateMismatchCount
             missing = $run.missingCount
+            missingInGateway = $run.missingInGatewayCount
+            suggestedPairs = $run.suggestedPairCount
             invalid = $run.invalidCount
             duplicate = $run.duplicateCount
             replayMilliseconds = [Math]::Round($replayWatch.Elapsed.TotalMilliseconds, 2)
